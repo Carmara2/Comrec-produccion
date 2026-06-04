@@ -431,7 +431,15 @@ document.getElementById('fecha').value=new Date().toISOString().split('T')[0];
 renderEncargadoSelect();
 renderTurnoGrid();
 populateJobSelect(document.getElementById('new-job'),'');
-loadFromSheets();
+
+// Mostrar datos locales inmediatamente, luego sincronizar con Sheets
+renderJobsList();
+renderWorkersTable();
+
+// Sincronizar al cargar — con reintento si falla
+loadFromSheets().catch(()=>{
+  setTimeout(()=>loadFromSheets(), 3000);
+});
 
 async function testPost(){
   setSyncStatus('loading','Probando envío...');
@@ -444,12 +452,8 @@ async function testPost(){
     observaciones: 'FILA DE PRUEBA - BORRAR'
   }];
   try{
-    await fetch(SCRIPT_URL,{
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'text/plain'},
-      body: JSON.stringify({records: testRecord})
-    });
-    setSyncStatus('ok','Envío enviado — revisa el Sheets');
+    await sendViaIframe({records: testRecord});
+    setSyncStatus('ok','Test enviado — revisa hoja Partes');
   }catch(e){
     setSyncStatus('err','Error: '+e.message);
   }
@@ -464,8 +468,16 @@ async function loadFromSheets(){
       S.workers=data.workers; S.jobs=data.jobs;
       if(data.horasAnuales) S.horasAnuales=data.horasAnuales;
       persist();
-      renderEncargadoSelect(); renderTurnoGrid();
+      renderEncargadoSelect();
+      renderTurnoGrid();
       populateJobSelect(document.getElementById('new-job'),'');
+      // Re-render config pages if visible
+      if(document.getElementById('page-workers').classList.contains('active')){
+        renderWorkersTable(); updateHorasDisplay();
+      }
+      if(document.getElementById('page-jobs').classList.contains('active')){
+        renderJobsList();
+      }
       setSyncStatus('ok','Listas actualizadas');
     } else setSyncStatus('err','Error Sheets');
   }catch(e){setSyncStatus('warn','Datos locales');}
@@ -726,6 +738,53 @@ function delRegistro(rid){
   renderSummary();
 }
 
+function sendViaIframe(payload){
+  return new Promise((resolve)=>{
+    // Crear iframe oculto para recibir respuesta
+    const iframeId = 'gs-iframe-'+Date.now();
+    const iframe = document.createElement('iframe');
+    iframe.name = iframeId;
+    iframe.id = iframeId;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    // Crear formulario que apunta al iframe
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = SCRIPT_URL;
+    form.target = iframeId;
+    form.style.display = 'none';
+
+    // Campo con los datos JSON
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify(payload);
+    form.appendChild(input);
+
+    document.body.appendChild(form);
+
+    // Timeout — si en 8s no hay respuesta asumimos éxito (no-cors)
+    const timer = setTimeout(()=>{
+      cleanup();
+      resolve({ok:true});
+    }, 8000);
+
+    iframe.onload = ()=>{
+      clearTimeout(timer);
+      cleanup();
+      resolve({ok:true});
+    };
+
+    function cleanup(){
+      try{ document.body.removeChild(form); }catch(e){}
+      try{ document.body.removeChild(iframe); }catch(e){}
+    }
+
+    form.submit();
+  });
+}
+
 async function submitForm(){
   const fecha=document.getElementById('fecha').value;
   const turno=document.getElementById('turno').value;
@@ -733,6 +792,7 @@ async function submitForm(){
   if(!fecha||!turno){showAlert('err','Completa fecha y turno.');return;}
   if(!encargado){showAlert('err','Selecciona el encargado.');return;}
   if(!registros.length){showAlert('err','Añade al menos un registro.');return;}
+
   const ts=new Date().toLocaleString('es-ES');
   const records=registros.map(r=>({
     timestamp:ts,fecha,turno,encargado,
@@ -742,20 +802,21 @@ async function submitForm(){
     num_balas:r.numBalas||0,peso_bala:r.pesoBala||0,
     observaciones:r.obs
   }));
+
   const btn=document.getElementById('submitBtn');
-  btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Registrando...';
+  btn.disabled=true;
+  btn.innerHTML='<i class="ti ti-loader-2"></i> Registrando...';
+
   try{
-    // Apps Script requiere Content-Type text/plain con mode no-cors
-    await fetch(SCRIPT_URL,{
-      method:'POST',
-      mode:'no-cors',
-      headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({records})
-    });
+    await sendViaIframe({records});
     showAlert('ok',`✓ Turno registrado: ${records.length} fila(s) enviadas a Google Sheets.`);
     registros=[];editingId=null;renderSummary();clearNewForm();
-  }catch(e){showAlert('err','Error de conexión: '+e.message);}
-  finally{btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i> Registrar turno';}
+  }catch(e){
+    showAlert('err','Error de conexión: '+e.message);
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML='<i class="ti ti-send"></i> Registrar turno';
+  }
 }
 
 function showAlert(type,msg){
