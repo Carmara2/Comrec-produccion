@@ -397,7 +397,7 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2AsRalYQtap4Q8vJe9smyAqSUUoLDBk1rdyI9vpY7LzUvkDePya7LGvtwphRQf7JzCQ/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby8Q2-J7aWmH-ud3LBtlbc3T4WGTHk6BCuWppYnvneoyFv413_0bmR6TAdJdqNsG5R-dg/exec";
 
 let S = {
   horasAnuales: 1800,
@@ -553,7 +553,7 @@ function onNewJobChange(){
   const opts=S.jobs[job].options;
   document.getElementById('new-subval').innerHTML=opts.map(o=>{
     const name=typeof o==='object'?o.name:o;
-    const pb=typeof o==='object'?o.pesoBala:0;
+    const pb=typeof o==='object'?(parseFloat(o.pesoBala)||0):0;
     return `<option value="${name}" data-peso="${pb}">${name}</option>`;
   }).join('');
   sub.classList.add('on');
@@ -565,9 +565,16 @@ function onDetailChange(){
   const balasWrap=document.getElementById('new-balas-wrap');
   if(!BALA_JOBS.includes(job)){balasWrap.classList.remove('on');return;}
   const sel=document.getElementById('new-subval');
-  const opt=sel.options[sel.selectedIndex];
-  const peso=opt?parseFloat(opt.dataset.peso)||0:0;
-  document.getElementById('new-peso-bala').value=peso>0?peso+' Tn/bala':'—';
+  const detalleName=sel.value;
+  // Buscar pesoBala en S.jobs
+  let peso=0;
+  if(S.jobs[job]){
+    const found=S.jobs[job].options.find(o=>
+      (typeof o==='object'?o.name:o)===detalleName
+    );
+    peso=found&&typeof found==='object'?parseFloat(found.pesoBala)||0:0;
+  }
+  document.getElementById('new-peso-bala').value=peso>0?peso+' Tn/bala':'Sin peso configurado';
   balasWrap.classList.add('on');
 }
 
@@ -591,7 +598,12 @@ function addRegistro(){
   const balasWrap=document.getElementById('new-balas-wrap');
   const numBalas=balasWrap.classList.contains('on')?parseInt(document.getElementById('new-balas').value)||0:0;
   const selOpt=document.getElementById('new-subval');
-  const pesoBala=selOpt.options[selOpt.selectedIndex]?parseFloat(selOpt.options[selOpt.selectedIndex].dataset.peso)||0:0;
+  const selectedDet=selOpt.value;
+  let pesoBala=0;
+  if(S.jobs[job]){
+    const foundOpt=S.jobs[job].options.find(o=>(typeof o==='object'?o.name:o)===selectedDet);
+    pesoBala=foundOpt&&typeof foundOpt==='object'?parseFloat(foundOpt.pesoBala)||0:0;
+  }
   const durMin=calcDuracion(t1,t2);
 
   if(!workers.length){showAlert('err','Selecciona al menos un trabajador.');return;}
