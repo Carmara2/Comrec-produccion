@@ -426,18 +426,16 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 
       <div class="card">
         <div class="card-title"><i class="ti ti-filter"></i> Seleccionar trabajo</div>
-        <div class="grid2">
-          <div class="field">
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <div class="field" style="flex:1;margin-bottom:0">
             <label>Trabajo</label>
             <select id="an-job" onchange="loadAnalytics()">
               <option value="">— Seleccionar —</option>
             </select>
           </div>
-          <div class="field" style="display:flex;align-items:flex-end">
-            <button class="btn btn-primary" onclick="loadAnalytics()" style="height:34px">
-              <i class="ti ti-refresh"></i> Actualizar
-            </button>
-          </div>
+          <button class="btn btn-primary" onclick="loadAnalytics()" style="height:34px;flex-shrink:0;margin-bottom:0">
+            <i class="ti ti-refresh"></i> Actualizar
+          </button>
         </div>
       </div>
 
@@ -506,6 +504,7 @@ populateJobSelect(document.getElementById('new-job'),'');
 // Mostrar datos locales inmediatamente, luego sincronizar con Sheets
 renderJobsList();
 renderWorkersTable();
+populateAnJobSelect();
 
 // Sincronizar al cargar — con reintento si falla
 loadFromSheets().catch(()=>{
