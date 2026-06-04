@@ -394,8 +394,16 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 
     <!-- ══ TRABAJOS ══ -->
     <div class="page" id="page-jobs">
-      <p class="page-title">Trabajos</p>
-      <p class="page-sub">Tipos de trabajo y sus detalles</p>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.25rem;flex-wrap:wrap;gap:8px">
+        <div>
+          <p class="page-title" style="margin-bottom:.25rem">Trabajos</p>
+          <p class="page-sub">Tipos de trabajo y sus detalles</p>
+        </div>
+        <button class="btn btn-primary" onclick="saveListasToSheets()" id="saveListasBtn" style="height:36px;margin-top:4px">
+          <i class="ti ti-device-floppy"></i> Guardar en Sheets
+        </button>
+      </div>
+      <div class="alert" id="saveListasAlert" style="margin-bottom:.75rem"></div>
       <div class="card">
         <div class="card-title"><i class="ti ti-tool"></i> Trabajos y detalles</div>
         <div id="jobsList"></div>
@@ -449,7 +457,7 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzSn4fdvrAyxI3z2s16G9D5dVdDgpKmomRwq1ZFOdZWmmsBcRexzJna8KXtY2nqsrwoNw/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwVxCxC97fnBalhzv3DX1bLPvqJos-LNKq5RdvxBlKdfcliLHAFIX-56aJLX_5JWoTWjA/exec";
 
 let S = {
   horasAnuales: 1800,
@@ -1263,6 +1271,27 @@ function renderAnalytics(data){
     if(!Object.keys(data.series).length){
       content.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text3)">Sin datos para este trabajo en los últimos 12 meses.</div>';
     }
+  }
+}
+
+// ── GUARDAR LISTAS EN SHEETS ───────────────────────────────────
+async function saveListasToSheets(){
+  const btn = document.getElementById('saveListasBtn');
+  const alert = document.getElementById('saveListasAlert');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i> Guardando...';
+
+  try {
+    await sendViaIframe({ action: 'saveListas', jobs: S.jobs });
+    alert.className = 'alert on alert-ok';
+    alert.innerHTML = '<i class="ti ti-check"></i> Trabajos y detalles guardados correctamente en Google Sheets.';
+    setTimeout(()=>{ alert.className='alert'; }, 4000);
+  } catch(e) {
+    alert.className = 'alert on alert-err';
+    alert.innerHTML = '<i class="ti ti-alert-circle"></i> Error al guardar: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-device-floppy"></i> Guardar en Sheets';
   }
 }
 </script>
