@@ -416,7 +416,18 @@ let S = {
     "Corte":        {label:"Máquina / tipo",   options:["Bob Plast Sierra","Bob Plast Guillotina","Bob Papel Sierra","Bob Papel Guillotina"]}
   }
 };
-try{const d=localStorage.getItem('parte_gh');if(d)S=JSON.parse(d);}catch(e){}
+try{
+  const d=localStorage.getItem('parte_gh');
+  if(d){
+    S=JSON.parse(d);
+    // Normalizar opciones — pueden ser strings (formato antiguo) u objetos {name,pesoBala}
+    Object.keys(S.jobs||{}).forEach(jn=>{
+      S.jobs[jn].options=(S.jobs[jn].options||[]).map(o=>
+        typeof o==='object' ? o : {name:String(o),pesoBala:0}
+      );
+    });
+  }
+}catch(e){}
 function persist(){try{localStorage.setItem('parte_gh',JSON.stringify(S));}catch(e){}}
 
 let registros=[], editingId=null;
@@ -466,7 +477,13 @@ async function loadFromSheets(){
     const data = await res.json();
     if(data && data.ok){
       S.workers = data.workers;
-      S.jobs    = data.jobs;
+      // Normalizar opciones del Sheets
+      Object.keys(data.jobs||{}).forEach(jn=>{
+        data.jobs[jn].options=(data.jobs[jn].options||[]).map(o=>
+          typeof o==='object' ? o : {name:String(o),pesoBala:0}
+        );
+      });
+      S.jobs = data.jobs;
       if(data.horasAnuales) S.horasAnuales = data.horasAnuales;
       persist();
       renderEncargadoSelect();
