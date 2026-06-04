@@ -449,7 +449,7 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwp4bRqqN7FxrTECoGjeavrQjM0iNJh-i0n6bZ3VYHvTIxGrpmViA_6SO7YQrB3lrhkOg/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzSn4fdvrAyxI3z2s16G9D5dVdDgpKmomRwq1ZFOdZWmmsBcRexzJna8KXtY2nqsrwoNw/exec";
 
 let S = {
   horasAnuales: 1800,
@@ -547,8 +547,6 @@ function applySheetData(data){
 
 async function loadFromSheets(){
   setSyncStatus('loading','Sincronizando...');
-
-  // Método 1: fetch directo
   try{
     const res = await fetch(SCRIPT_URL);
     const data = await res.json();
@@ -556,45 +554,12 @@ async function loadFromSheets(){
       setSyncStatus('ok','Listas actualizadas');
       setTimeout(()=>{ document.getElementById('syncStatus').innerHTML=''; },3000);
       return;
+    } else {
+      setSyncStatus('err','Error Sheets: '+(data.error||''));
     }
-  } catch(e1){}
-
-  // Método 2: fetch con no-cors redirect trick via URL param
-  try{
-    const res = await fetch(SCRIPT_URL+'?t='+Date.now(), {mode:'cors',credentials:'omit'});
-    const data = await res.json();
-    if(applySheetData(data)){
-      setSyncStatus('ok','Listas actualizadas');
-      setTimeout(()=>{ document.getElementById('syncStatus').innerHTML=''; },3000);
-      return;
-    }
-  } catch(e2){}
-
-  // Método 3: script tag dinámico (JSONP simulado via doGet que devuelve JS)
-  try{
-    await new Promise((resolve,reject)=>{
-      const script=document.createElement('script');
-      const cbName='_gsLoad'+Date.now();
-      window[cbName]=function(data){
-        delete window[cbName];
-        document.head.removeChild(script);
-        if(applySheetData(data)){
-          setSyncStatus('ok','Listas actualizadas');
-          setTimeout(()=>{ document.getElementById('syncStatus').innerHTML=''; },3000);
-          resolve();
-        } else {
-          reject();
-        }
-      };
-      script.onerror=()=>{ delete window[cbName]; document.head.removeChild(script); reject(); };
-      script.src=SCRIPT_URL+'?callback='+cbName;
-      document.head.appendChild(script);
-      setTimeout(()=>{ if(window[cbName]){ delete window[cbName]; reject(); } },8000);
-    });
-    return;
-  } catch(e3){}
-
-  setSyncStatus('warn','Sin conexión — usando datos locales');
+  } catch(e){
+    setSyncStatus('warn','Datos locales: '+e.message);
+  }
 }
 
 function setSyncStatus(type,msg){
