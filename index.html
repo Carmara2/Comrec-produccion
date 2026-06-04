@@ -929,11 +929,14 @@ function addDetail(jn){
   const k='det-'+jn.replace(/\s/g,'_');
   const v=document.getElementById(k).value.trim();
   if(!v)return;
-  if(S.jobs[jn].options.includes(v)){alert('Ya existe.');return;}
-  S.jobs[jn].options.push(v);persist();document.getElementById(k).value='';renderJobsList();
+  const exists=S.jobs[jn].options.some(o=>(typeof o==='object'?o.name:o)===v);
+  if(exists){alert('Ya existe.');return;}
+  S.jobs[jn].options.push({name:v,pesoBala:0});
+  persist();document.getElementById(k).value='';renderJobsList();
 }
 function removeDetail(jn,opt){
-  S.jobs[jn].options=S.jobs[jn].options.filter(o=>o!==opt);persist();renderJobsList();
+  S.jobs[jn].options=S.jobs[jn].options.filter(o=>(typeof o==='object'?o.name:o)!==opt);
+  persist();renderJobsList();
 }
 </script>
 </body>
