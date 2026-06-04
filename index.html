@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Partes de Trabajo · OMREC</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -188,6 +189,16 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
   .sidebar{width:52px}.nav-item span{display:none}.sidebar-section{display:none}
   .grid3{grid-template-columns:1fr 1fr}
 }
+.an-kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:1rem}
+.an-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem}
+.an-kpi-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+.an-kpi-val{font-size:28px;font-weight:300;color:var(--text);letter-spacing:-.02em;line-height:1}
+.an-kpi-unit{font-size:12px;color:var(--text3);margin-top:2px}
+.an-chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:1rem}
+.an-chart-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:1rem}
+.an-det-section{margin-bottom:1.5rem}
+.an-det-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:.75rem;display:flex;align-items:center;gap:8px}
+.an-det-title::after{content:'';flex:1;height:1px;background:var(--border)}
 </style>
 </head>
 <body>
@@ -217,6 +228,12 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
     <div class="sidebar-section">Gestión</div>
     <div class="nav-item active" id="nav-parte" onclick="showPage('parte',this)">
       <i class="ti ti-clipboard-list"></i><span>Registrar turno</span>
+    </div>
+
+    <div class="sidebar-section">Config.</div>
+    <div class="sidebar-section">Consulta</div>
+    <div class="nav-item" id="nav-analytics" onclick="showPage('analytics',this)">
+      <i class="ti ti-chart-bar"></i><span>Analítica</span>
     </div>
 
     <div class="sidebar-section">Config.</div>
@@ -393,11 +410,46 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
       </div>
     </div>
 
+
+    <!-- ══ ANALÍTICA ══ -->
+    <div class="page" id="page-analytics">
+      <p class="page-title">Analítica</p>
+      <p class="page-sub">Análisis por trabajo y detalle</p>
+
+      <div class="card">
+        <div class="card-title"><i class="ti ti-filter"></i> Seleccionar trabajo</div>
+        <div class="grid2">
+          <div class="field">
+            <label>Trabajo</label>
+            <select id="an-job" onchange="loadAnalytics()">
+              <option value="">— Seleccionar —</option>
+            </select>
+          </div>
+          <div class="field" style="display:flex;align-items:flex-end">
+            <button class="btn btn-primary" onclick="loadAnalytics()" style="height:34px">
+              <i class="ti ti-refresh"></i> Actualizar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="an-loading" style="display:none;text-align:center;padding:2rem;color:var(--text2)">
+        <i class="ti ti-loader-2" style="font-size:24px"></i>
+        <p style="margin-top:8px;font-size:13px">Cargando datos...</p>
+      </div>
+
+      <div id="an-content" style="display:none"></div>
+      <div id="an-empty" style="display:none;text-align:center;padding:3rem;color:var(--text3)">
+        <i class="ti ti-chart-bar" style="font-size:40px;opacity:.3"></i>
+        <p style="margin-top:8px;font-size:13px">Selecciona un trabajo para ver el análisis</p>
+      </div>
+    </div>
+
   </main>
 </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxxSDhn_If_TPCBptvyicnmS_srJ1IcaIGwAgarAdNGncAXDoWcXNNWRbYAKilgiv36hA/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwp4bRqqN7FxrTECoGjeavrQjM0iNJh-i0n6bZ3VYHvTIxGrpmViA_6SO7YQrB3lrhkOg/exec";
 
 let S = {
   horasAnuales: 1800,
@@ -470,39 +522,79 @@ async function testPost(){
   }
 }
 
+function applySheetData(data){
+  if(!data||!data.ok) return false;
+  S.workers = data.workers;
+  Object.keys(data.jobs||{}).forEach(jn=>{
+    data.jobs[jn].options=(data.jobs[jn].options||[]).map(o=>
+      typeof o==='object' ? o : {name:String(o),pesoBala:0}
+    );
+  });
+  S.jobs = data.jobs;
+  if(data.horasAnuales) S.horasAnuales = data.horasAnuales;
+  persist();
+  renderEncargadoSelect();
+  renderTurnoGrid();
+  populateJobSelect(document.getElementById('new-job'),'');
+  if(document.getElementById('page-workers').classList.contains('active')){
+    renderWorkersTable(); updateHorasDisplay();
+  }
+  if(document.getElementById('page-jobs').classList.contains('active')){
+    renderJobsList();
+  }
+  return true;
+}
+
 async function loadFromSheets(){
   setSyncStatus('loading','Sincronizando...');
+
+  // Método 1: fetch directo
   try{
     const res = await fetch(SCRIPT_URL);
     const data = await res.json();
-    if(data && data.ok){
-      S.workers = data.workers;
-      // Normalizar opciones del Sheets
-      Object.keys(data.jobs||{}).forEach(jn=>{
-        data.jobs[jn].options=(data.jobs[jn].options||[]).map(o=>
-          typeof o==='object' ? o : {name:String(o),pesoBala:0}
-        );
-      });
-      S.jobs = data.jobs;
-      if(data.horasAnuales) S.horasAnuales = data.horasAnuales;
-      persist();
-      renderEncargadoSelect();
-      renderTurnoGrid();
-      populateJobSelect(document.getElementById('new-job'),'');
-      if(document.getElementById('page-workers').classList.contains('active')){
-        renderWorkersTable(); updateHorasDisplay();
-      }
-      if(document.getElementById('page-jobs').classList.contains('active')){
-        renderJobsList();
-      }
+    if(applySheetData(data)){
       setSyncStatus('ok','Listas actualizadas');
       setTimeout(()=>{ document.getElementById('syncStatus').innerHTML=''; },3000);
-    } else {
-      setSyncStatus('err','Error Sheets: '+(data.error||''));
+      return;
     }
-  } catch(e){
-    setSyncStatus('warn','Datos locales: '+e.message);
-  }
+  } catch(e1){}
+
+  // Método 2: fetch con no-cors redirect trick via URL param
+  try{
+    const res = await fetch(SCRIPT_URL+'?t='+Date.now(), {mode:'cors',credentials:'omit'});
+    const data = await res.json();
+    if(applySheetData(data)){
+      setSyncStatus('ok','Listas actualizadas');
+      setTimeout(()=>{ document.getElementById('syncStatus').innerHTML=''; },3000);
+      return;
+    }
+  } catch(e2){}
+
+  // Método 3: script tag dinámico (JSONP simulado via doGet que devuelve JS)
+  try{
+    await new Promise((resolve,reject)=>{
+      const script=document.createElement('script');
+      const cbName='_gsLoad'+Date.now();
+      window[cbName]=function(data){
+        delete window[cbName];
+        document.head.removeChild(script);
+        if(applySheetData(data)){
+          setSyncStatus('ok','Listas actualizadas');
+          setTimeout(()=>{ document.getElementById('syncStatus').innerHTML=''; },3000);
+          resolve();
+        } else {
+          reject();
+        }
+      };
+      script.onerror=()=>{ delete window[cbName]; document.head.removeChild(script); reject(); };
+      script.src=SCRIPT_URL+'?callback='+cbName;
+      document.head.appendChild(script);
+      setTimeout(()=>{ if(window[cbName]){ delete window[cbName]; reject(); } },8000);
+    });
+    return;
+  } catch(e3){}
+
+  setSyncStatus('warn','Sin conexión — usando datos locales');
 }
 
 function setSyncStatus(type,msg){
@@ -1053,6 +1145,160 @@ function addDetail(jn){
 function removeDetail(jn,opt){
   S.jobs[jn].options=S.jobs[jn].options.filter(o=>(typeof o==='object'?o.name:o)!==opt);
   persist();renderJobsList();
+}
+
+// ── ANALÍTICA ──────────────────────────────────────────────────
+const BALA_JOBS_AN = ["Embalar 1900","Embalar 2000"];
+let anCharts = [];
+
+function populateAnJobSelect(){
+  const sel = document.getElementById('an-job');
+  if(!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— Seleccionar —</option>';
+  Object.keys(S.jobs).forEach(j => {
+    const o = document.createElement('option');
+    o.value = j; o.textContent = j;
+    if(j===prev) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+async function loadAnalytics(){
+  const trabajo = document.getElementById('an-job').value;
+  const content = document.getElementById('an-content');
+  const loading = document.getElementById('an-loading');
+  const empty   = document.getElementById('an-empty');
+
+  if(!trabajo){ content.style.display='none'; empty.style.display='block'; return; }
+
+  // Destruir gráficos anteriores
+  anCharts.forEach(c=>c.destroy()); anCharts=[];
+
+  loading.style.display='block';
+  content.style.display='none';
+  empty.style.display='none';
+
+  try{
+    const url = SCRIPT_URL+'?action=analytics&trabajo='+encodeURIComponent(trabajo)+'&t='+Date.now();
+    const res  = await fetch(url);
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Error');
+    renderAnalytics(data);
+  } catch(e){
+    loading.style.display='none';
+    empty.innerHTML='<i class="ti ti-alert-circle" style="font-size:40px;opacity:.3"></i><p style="margin-top:8px;font-size:13px;color:var(--red)">Error cargando datos: '+e.message+'</p>';
+    empty.style.display='block';
+  }
+}
+
+function renderAnalytics(data){
+  const loading = document.getElementById('an-loading');
+  const content = document.getElementById('an-content');
+  loading.style.display='none';
+  content.style.display='block';
+  content.innerHTML='';
+
+  const months = data.months;
+  const curMonthIdx = months.length-1;
+  const COLORS = ['#185FA5','#e05c2a','#2a9d8f','#e9c46a','#8338ec','#fb5607','#06d6a0','#ef476f','#118ab2','#ffd166'];
+
+  if(data.tipo==='embalar'){
+    // Para cada detalle: KPI mes actual + 2 gráficos (tons y coste/ton)
+    Object.entries(data.series).forEach(([det, serie], di)=>{
+      const curTons     = serie.tons[curMonthIdx]||0;
+      const curCosteTon = serie.costeTon[curMonthIdx]||0;
+      // Último mes con datos para coste
+      const lastCoste = [...serie.costeTon].reverse().find(v=>v>0)||0;
+      const lastTons  = [...serie.tons].reverse().find(v=>v>0)||0;
+
+      const sec = document.createElement('div');
+      sec.className='an-det-section';
+      sec.innerHTML=
+        '<div class="an-det-title"><i class="ti ti-package"></i> '+det+'</div>'+
+        '<div class="an-kpi-grid">'+
+          '<div class="an-kpi">'+
+            '<div class="an-kpi-label">Toneladas mes actual</div>'+
+            '<div class="an-kpi-val">'+curTons.toFixed(1)+'</div>'+
+            '<div class="an-kpi-unit">Tn</div>'+
+          '</div>'+
+          '<div class="an-kpi">'+
+            '<div class="an-kpi-label">Coste/Tn mes actual</div>'+
+            '<div class="an-kpi-val">'+(curCosteTon>0?curCosteTon.toFixed(2):lastCoste.toFixed(2))+'</div>'+
+            '<div class="an-kpi-unit">€/Tn</div>'+
+          '</div>'+
+          '<div class="an-kpi">'+
+            '<div class="an-kpi-label">Total acumulado 12m</div>'+
+            '<div class="an-kpi-val">'+serie.tons.reduce((a,b)=>a+b,0).toFixed(1)+'</div>'+
+            '<div class="an-kpi-unit">Tn</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="grid2">'+
+          '<div class="an-chart-card"><div class="an-chart-title">Toneladas producidas</div><canvas id="ch-tons-'+di+'"></canvas></div>'+
+          '<div class="an-chart-card"><div class="an-chart-title">Coste por tonelada (€/Tn)</div><canvas id="ch-coste-'+di+'"></canvas></div>'+
+        '</div>';
+      content.appendChild(sec);
+
+      const color = COLORS[di%COLORS.length];
+      const commonOpts = {
+        responsive:true,
+        plugins:{legend:{display:false}},
+        scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#f0ede8'}}}
+      };
+      anCharts.push(new Chart(document.getElementById('ch-tons-'+di), {
+        type:'bar',
+        data:{ labels:months, datasets:[{data:serie.tons,backgroundColor:color+'33',borderColor:color,borderWidth:2,borderRadius:4}]},
+        options:{...commonOpts}
+      }));
+      anCharts.push(new Chart(document.getElementById('ch-coste-'+di), {
+        type:'line',
+        data:{ labels:months, datasets:[{data:serie.costeTon,borderColor:color,backgroundColor:color+'22',fill:true,tension:.3,pointRadius:4,pointBackgroundColor:color}]},
+        options:{...commonOpts}
+      }));
+    });
+
+    if(!Object.keys(data.series).length){
+      content.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text3)">Sin datos de producción para este trabajo en los últimos 12 meses.</div>';
+    }
+
+  } else {
+    // Trabajos sin balas — horas por detalle
+    Object.entries(data.series).forEach(([det, serie], di)=>{
+      const curHoras = serie.horas[curMonthIdx]||0;
+      const totalHoras = serie.horas.reduce((a,b)=>a+b,0);
+
+      const sec = document.createElement('div');
+      sec.className='an-det-section';
+      sec.innerHTML=
+        '<div class="an-det-title"><i class="ti ti-clock"></i> '+det+'</div>'+
+        '<div class="an-kpi-grid">'+
+          '<div class="an-kpi">'+
+            '<div class="an-kpi-label">Horas mes actual</div>'+
+            '<div class="an-kpi-val">'+curHoras.toFixed(1)+'</div>'+
+            '<div class="an-kpi-unit">h</div>'+
+          '</div>'+
+          '<div class="an-kpi">'+
+            '<div class="an-kpi-label">Total acumulado 12m</div>'+
+            '<div class="an-kpi-val">'+totalHoras.toFixed(1)+'</div>'+
+            '<div class="an-kpi-unit">h</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="an-chart-card"><div class="an-chart-title">Horas dedicadas por mes</div><canvas id="ch-horas-'+di+'"></canvas></div>';
+      content.appendChild(sec);
+
+      const color = COLORS[di%COLORS.length];
+      anCharts.push(new Chart(document.getElementById('ch-horas-'+di), {
+        type:'bar',
+        data:{ labels:months, datasets:[{data:serie.horas,backgroundColor:color+'33',borderColor:color,borderWidth:2,borderRadius:4}]},
+        options:{responsive:true,plugins:{legend:{display:false}},
+          scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#f0ede8'}}}}
+      }));
+    });
+
+    if(!Object.keys(data.series).length){
+      content.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text3)">Sin datos para este trabajo en los últimos 12 meses.</div>';
+    }
+  }
 }
 </script>
 </body>
