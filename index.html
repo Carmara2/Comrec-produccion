@@ -433,6 +433,28 @@ renderTurnoGrid();
 populateJobSelect(document.getElementById('new-job'),'');
 loadFromSheets();
 
+async function testPost(){
+  setSyncStatus('loading','Probando envío...');
+  const testRecord = [{
+    timestamp: new Date().toLocaleString('es-ES'),
+    fecha: new Date().toISOString().split('T')[0],
+    turno: 'TEST', encargado: 'TEST', trabajador: 'TEST',
+    hora_inicio: '00:00', hora_fin: '00:01', duracion_min: 1,
+    trabajo: 'TEST', detalle: 'TEST', num_balas: 0, peso_bala: 0,
+    observaciones: 'FILA DE PRUEBA - BORRAR'
+  }];
+  try{
+    await fetch(SCRIPT_URL,{
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body: JSON.stringify({records: testRecord})
+    });
+    setSyncStatus('ok','Envío enviado — revisa el Sheets');
+  }catch(e){
+    setSyncStatus('err','Error: '+e.message);
+  }
+}
+
 async function loadFromSheets(){
   setSyncStatus('loading','Sincronizando...');
   try{
@@ -723,11 +745,16 @@ async function submitForm(){
   const btn=document.getElementById('submitBtn');
   btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Registrando...';
   try{
-    await fetch(SCRIPT_URL,{method:'POST',mode:'no-cors',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({records})});
+    // Apps Script requiere Content-Type text/plain con mode no-cors
+    await fetch(SCRIPT_URL,{
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({records})
+    });
     showAlert('ok',`✓ Turno registrado: ${records.length} fila(s) enviadas a Google Sheets.`);
     registros=[];editingId=null;renderSummary();clearNewForm();
-  }catch(e){showAlert('err','Error de conexión.');}
+  }catch(e){showAlert('err','Error de conexión: '+e.message);}
   finally{btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i> Registrar turno';}
 }
 
