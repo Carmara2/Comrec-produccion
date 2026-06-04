@@ -887,25 +887,27 @@ function renderJobsList(){
   const c=document.getElementById('jobsList');c.innerHTML='';
   Object.entries(S.jobs).forEach(([jn,cfg])=>{
     const div=document.createElement('div');div.className='job-card';
-    div.innerHTML=`
-      <div class="job-card-head">
-        <div><span style="font-weight:600">${jn}</span>
-          <span style="font-size:12px;color:var(--text2);margin-left:8px">→ ${cfg.label}</span>
-          <span class="n-badge">${cfg.options.length}</span></div>
-        <button class="btn btn-danger" style="height:26px;padding:0 8px;font-size:12px"
-          onclick="removeJob('${jn}')"><i class="ti ti-trash"></i></button>
-      </div>
-      <div class="job-card-body">
-        <div style="margin-bottom:8px">${cfg.options.map(o=>`<span class="tag">${o}<button
-          onclick="removeDetail('${jn}','${o.replace(/'/g,"\\'")}');event.stopPropagation()"
-          style="background:none;border:none;cursor:pointer;color:#64748b;font-size:11px;margin-left:2px;padding:0">×</button></span>`).join('')}</div>
-        <div style="display:flex;gap:8px">
-          <input type="text" id="det-${jn.replace(/\s/g,'_')}" placeholder="Nuevo detalle..."
-            style="height:28px;flex:1;font-size:12px"/>
-          <button class="btn btn-primary" style="height:28px;padding:0 10px;font-size:12px"
-            onclick="addDetail('${jn}')"><i class="ti ti-plus"></i> Añadir</button>
-        </div>
-      </div>`;
+    const tagsHtml=cfg.options.map(o=>{
+      const nm=typeof o==='object'?o.name:String(o);
+      const pb=typeof o==='object'&&o.pesoBala?` <span style="color:var(--text3);font-size:10px">${o.pesoBala}Tn</span>`:'';
+      const nmSafe=nm.replace(/'/g,"\'");
+      return '<span class="tag">'+nm+pb+'<button onclick="removeDetail(\''+jn+'\',\''+nmSafe+'\');event.stopPropagation()" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:11px;margin-left:2px;padding:0">×</button></span>';
+    }).join('');
+    const jnKey=jn.replace(/\s/g,'_');
+    div.innerHTML=
+      '<div class="job-card-head">'+
+        '<div><span style="font-weight:600">'+jn+'</span>'+
+        '<span style="font-size:12px;color:var(--text2);margin-left:8px">→ '+cfg.label+'</span>'+
+        '<span class="n-badge">'+cfg.options.length+'</span></div>'+
+        '<button class="btn btn-danger" style="height:26px;padding:0 8px;font-size:12px" onclick="removeJob(\''+jn+'\')"><i class="ti ti-trash"></i></button>'+
+      '</div>'+
+      '<div class="job-card-body">'+
+        '<div style="margin-bottom:8px">'+tagsHtml+'</div>'+
+        '<div style="display:flex;gap:8px">'+
+          '<input type="text" id="det-'+jnKey+'" placeholder="Nuevo detalle..." style="height:28px;flex:1;font-size:12px"/>'+
+          '<button class="btn btn-primary" style="height:28px;padding:0 10px;font-size:12px" onclick="addDetail(\''+jn+'\')"><i class="ti ti-plus"></i> Añadir</button>'+
+        '</div>'+
+      '</div>';
     c.appendChild(div);
   });
 }
