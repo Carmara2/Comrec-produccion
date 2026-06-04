@@ -459,57 +459,33 @@ async function testPost(){
   }
 }
 
-function loadFromSheets(){
-  return new Promise((resolve)=>{
-    setSyncStatus('loading','Sincronizando...');
-    const cbName = 'gsCallback_'+Date.now();
-    const script  = document.createElement('script');
-
-    window[cbName] = function(data){
-      delete window[cbName];
-      document.body.removeChild(script);
-      if(data && data.ok){
-        S.workers = data.workers;
-        S.jobs    = data.jobs;
-        if(data.horasAnuales) S.horasAnuales = data.horasAnuales;
-        persist();
-        renderEncargadoSelect();
-        renderTurnoGrid();
-        populateJobSelect(document.getElementById('new-job'),'');
-        if(document.getElementById('page-workers').classList.contains('active')){
-          renderWorkersTable(); updateHorasDisplay();
-        }
-        if(document.getElementById('page-jobs').classList.contains('active')){
-          renderJobsList();
-        }
-        setSyncStatus('ok','Listas actualizadas');
-        setTimeout(()=>document.getElementById('syncStatus').innerHTML='', 3000);
-      } else {
-        setSyncStatus('err','Error Sheets');
+async function loadFromSheets(){
+  setSyncStatus('loading','Sincronizando...');
+  try{
+    const res = await fetch(SCRIPT_URL);
+    const data = await res.json();
+    if(data && data.ok){
+      S.workers = data.workers;
+      S.jobs    = data.jobs;
+      if(data.horasAnuales) S.horasAnuales = data.horasAnuales;
+      persist();
+      renderEncargadoSelect();
+      renderTurnoGrid();
+      populateJobSelect(document.getElementById('new-job'),'');
+      if(document.getElementById('page-workers').classList.contains('active')){
+        renderWorkersTable(); updateHorasDisplay();
       }
-      resolve();
-    };
-
-    script.onerror = function(){
-      delete window[cbName];
-      try{ document.body.removeChild(script); }catch(e){}
-      setSyncStatus('warn','Sin conexión — datos locales');
-      resolve();
-    };
-
-    script.src = SCRIPT_URL + '?callback=' + cbName;
-    document.body.appendChild(script);
-
-    // Timeout 10s
-    setTimeout(()=>{
-      if(window[cbName]){
-        delete window[cbName];
-        try{ document.body.removeChild(script); }catch(e){}
-        setSyncStatus('warn','Timeout — datos locales');
-        resolve();
+      if(document.getElementById('page-jobs').classList.contains('active')){
+        renderJobsList();
       }
-    }, 10000);
-  });
+      setSyncStatus('ok','Listas actualizadas');
+      setTimeout(()=>{ document.getElementById('syncStatus').innerHTML=''; },3000);
+    } else {
+      setSyncStatus('err','Error Sheets: '+(data.error||''));
+    }
+  } catch(e){
+    setSyncStatus('warn','Datos locales: '+e.message);
+  }
 }
 
 function setSyncStatus(type,msg){
