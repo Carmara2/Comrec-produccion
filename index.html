@@ -283,8 +283,20 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
         <div class="sub-field" id="new-sub">
           <label style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;
             letter-spacing:.05em;margin-bottom:4px;display:block" id="new-sub-label">Detalle</label>
-          <select id="new-subval" style="width:100%;height:34px;padding:0 10px;
+          <select id="new-subval" onchange="onDetailChange()" style="width:100%;height:34px;padding:0 10px;
             border-radius:var(--radius);border:1px solid var(--border2);font-size:13px"></select>
+        </div>
+        <div class="sub-field" id="new-balas-wrap">
+          <div class="grid2" style="margin-top:8px">
+            <div class="field">
+              <label>Nº de balas producidas</label>
+              <input type="number" id="new-balas" min="0" placeholder="0"/>
+            </div>
+            <div class="field">
+              <label>Peso por bala estimado</label>
+              <input type="text" id="new-peso-bala" readonly style="background:#f5f5f3;color:var(--text2)"/>
+            </div>
+          </div>
         </div>
         <div class="field" style="margin-top:8px">
           <label>Observaciones</label>
@@ -324,6 +336,28 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
     <div class="page" id="page-workers">
       <p class="page-title">Trabajadores</p>
       <p class="page-sub">Lista de trabajadores y encargados</p>
+
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title"><i class="ti ti-settings"></i> Configuración jornada</div>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Horas laborales anuales</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="horasDisplay" style="font-size:32px;font-weight:300;color:var(--text);letter-spacing:-.02em">1800</span>
+              <span style="font-size:13px;color:var(--text3);margin-top:6px">h/año</span>
+            </div>
+            <span id="horasSubtext" style="font-size:12px;color:var(--text2)">= 108.000 min/año · Coste/min calculado por salario</span>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            <input type="number" id="horasInput" min="1" max="3000" placeholder="1800"
+              style="width:100px;height:36px;text-align:center;font-size:15px;font-weight:500"/>
+            <button class="btn btn-primary" onclick="saveHoras()">
+              <i class="ti ti-device-floppy"></i> Guardar
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-title"><i class="ti ti-users"></i> Lista de trabajadores</div>
         <table class="aux-table">
@@ -363,9 +397,10 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfvlZIG858fPXpmpPGF8K91Hp6L2S3BKth1WBh5MJgqHW5-Yp9iDCCmjm6kh2wjlaPgw/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2AsRalYQtap4Q8vJe9smyAqSUUoLDBk1rdyI9vpY7LzUvkDePya7LGvtwphRQf7JzCQ/exec";
 
 let S = {
+  horasAnuales: 1800,
   workers: [
     {name:"Carlos Ruiz",tipo:"Encargado"},{name:"María López",tipo:"Encargado"},
     {name:"Andrés Pérez",tipo:"Operario"},{name:"Pepe Martínez",tipo:"Operario"},
@@ -404,7 +439,9 @@ async function loadFromSheets(){
     const res=await fetch(SCRIPT_URL);
     const data=await res.json();
     if(data.ok){
-      S.workers=data.workers; S.jobs=data.jobs; persist();
+      S.workers=data.workers; S.jobs=data.jobs;
+      if(data.horasAnuales) S.horasAnuales=data.horasAnuales;
+      persist();
       renderEncargadoSelect(); renderTurnoGrid();
       populateJobSelect(document.getElementById('new-job'),'');
       setSyncStatus('ok','Listas actualizadas');
@@ -424,7 +461,7 @@ function showPage(p,el){
   document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   el.classList.add('active');
-  if(p==='workers')renderWorkersTable();
+  if(p==='workers'){renderWorkersTable();updateHorasDisplay();}
   if(p==='jobs')renderJobsList();
 }
 
@@ -500,13 +537,47 @@ function populateJobSelect(sel,selected){
   });
 }
 
+// Normaliza options: acepta string o {name,pesoBala}
+function optName(o){return typeof o==='object'?o.name:o;}
+function optPeso(o){return typeof o==='object'?(parseFloat(o.pesoBala)||0):0;}
+
+const BALA_JOBS = ["Embalar 1900","Embalar 2000"];
+
 function onNewJobChange(){
   const job=document.getElementById('new-job').value;
   const sub=document.getElementById('new-sub');
-  if(!job||!S.jobs[job]){sub.classList.remove('on');return;}
+  const balasWrap=document.getElementById('new-balas-wrap');
+  if(!job||!S.jobs[job]){sub.classList.remove('on');balasWrap.classList.remove('on');return;}
   document.getElementById('new-sub-label').textContent=S.jobs[job].label;
-  document.getElementById('new-subval').innerHTML=S.jobs[job].options.map(o=>`<option>${o}</option>`).join('');
+  // options can be {name,pesoBala} or string
+  const opts=S.jobs[job].options;
+  document.getElementById('new-subval').innerHTML=opts.map(o=>{
+    const name=typeof o==='object'?o.name:o;
+    const pb=typeof o==='object'?o.pesoBala:0;
+    return `<option value="${name}" data-peso="${pb}">${name}</option>`;
+  }).join('');
   sub.classList.add('on');
+  onDetailChange();
+}
+
+function onDetailChange(){
+  const job=document.getElementById('new-job').value;
+  const balasWrap=document.getElementById('new-balas-wrap');
+  if(!BALA_JOBS.includes(job)){balasWrap.classList.remove('on');return;}
+  const sel=document.getElementById('new-subval');
+  const opt=sel.options[sel.selectedIndex];
+  const peso=opt?parseFloat(opt.dataset.peso)||0:0;
+  document.getElementById('new-peso-bala').value=peso>0?peso+' Tn/bala':'—';
+  balasWrap.classList.add('on');
+}
+
+function calcDuracion(t1,t2){
+  if(!t1||!t2)return 0;
+  const [h1,m1]=t1.split(':').map(Number);
+  const [h2,m2]=t2.split(':').map(Number);
+  let mins=(h2*60+m2)-(h1*60+m1);
+  if(mins<0)mins+=24*60; // turno de noche
+  return mins;
 }
 
 function addRegistro(){
@@ -517,18 +588,29 @@ function addRegistro(){
   const sub=document.getElementById('new-sub');
   const detalle=sub.classList.contains('on')?document.getElementById('new-subval').value:'';
   const obs=document.getElementById('new-obs').value.trim();
+  const balasWrap=document.getElementById('new-balas-wrap');
+  const numBalas=balasWrap.classList.contains('on')?parseInt(document.getElementById('new-balas').value)||0:0;
+  const selOpt=document.getElementById('new-subval');
+  const pesoBala=selOpt.options[selOpt.selectedIndex]?parseFloat(selOpt.options[selOpt.selectedIndex].dataset.peso)||0:0;
+  const durMin=calcDuracion(t1,t2);
+
   if(!workers.length){showAlert('err','Selecciona al menos un trabajador.');return;}
   if(!job){showAlert('err','Selecciona el trabajo realizado.');return;}
-  workers.forEach(w=>registros.push({id:Date.now()+Math.random(),trabajador:w,t1,t2,job,detalle,obs}));
+  workers.forEach(w=>registros.push({
+    id:Date.now()+Math.random(),trabajador:w,t1,t2,
+    duracion_min:durMin,job,detalle,obs,numBalas,pesoBala
+  }));
   renderSummary();clearNewForm();
   document.getElementById('alertMsg').className='alert';
 }
 
 function clearNewForm(){
   document.querySelectorAll('#rwgrid-new .rwchip').forEach(c=>c.classList.remove('sel'));
-  ['new-t1','new-t2','new-obs'].forEach(id=>document.getElementById(id).value='');
+  ['new-t1','new-t2','new-obs','new-balas'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('new-job').value='';
   document.getElementById('new-sub').classList.remove('on');
+  document.getElementById('new-balas-wrap').classList.remove('on');
+  document.getElementById('new-peso-bala').value='';
 }
 
 function renderSummary(){
@@ -564,12 +646,16 @@ function renderSummary(){
           <button class="act-btn" onclick="cancelEdit()"><i class="ti ti-x"></i></button>
         </div></td>`;
     } else {
+      const balas=BALA_JOBS.includes(r.job)&&r.numBalas?r.numBalas:'—';
+      const pes=r.pesoBala>0?` (${r.pesoBala}Tn/b)`:'';
       tr.innerHTML=`<td style="color:var(--text3);font-size:11px">${i+1}</td>
         <td><strong>${r.trabajador}</strong></td>
         <td>${r.t1||'—'}</td><td>${r.t2||'—'}</td>
+        <td style="color:var(--text2)">${r.duracion_min||0}'</td>
         <td>${r.job}</td>
         <td style="color:var(--text2)">${r.detalle||'—'}</td>
-        <td style="color:var(--text2);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.obs||'—'}</td>
+        <td style="color:var(--text2)">${balas}${balas!=='—'?pes:''}</td>
+        <td style="color:var(--text2);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.obs||'—'}</td>
         <td><div class="row-acts">
           <button class="act-btn act-edit" onclick="startEdit('${r.id}')"><i class="ti ti-edit"></i></button>
           <button class="act-btn act-del" onclick="delRegistro('${r.id}')"><i class="ti ti-trash"></i></button>
@@ -617,7 +703,10 @@ async function submitForm(){
   const records=registros.map(r=>({
     timestamp:ts,fecha,turno,encargado,
     trabajador:r.trabajador,hora_inicio:r.t1,hora_fin:r.t2,
-    trabajo:r.job,detalle:r.detalle,observaciones:r.obs
+    duracion_min:r.duracion_min||0,
+    trabajo:r.job,detalle:r.detalle,
+    num_balas:r.numBalas||0,peso_bala:r.pesoBala||0,
+    observaciones:r.obs
   }));
   const btn=document.getElementById('submitBtn');
   btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Registrando...';
@@ -635,6 +724,28 @@ function showAlert(type,msg){
   el.className='alert on alert-'+(type==='ok'?'ok':'err');
   el.innerHTML=`<i class="ti ti-${type==='ok'?'check':'alert-circle'}"></i> ${msg}`;
   el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+// ── HORAS LABORALES ───────────────────────────────────────────
+function updateHorasDisplay(){
+  const h = S.horasAnuales || 1800;
+  document.getElementById('horasDisplay').textContent = h.toLocaleString('es-ES');
+  document.getElementById('horasInput').value = h;
+  const minAnuales = h * 60;
+  document.getElementById('horasSubtext').textContent =
+    `= ${minAnuales.toLocaleString('es-ES')} min/año · Coste/min calculado por salario individual`;
+}
+
+function saveHoras(){
+  const val = parseInt(document.getElementById('horasInput').value);
+  if(!val || val < 1){ alert('Introduce un número de horas válido.'); return; }
+  S.horasAnuales = val;
+  persist();
+  updateHorasDisplay();
+  showAlert('ok', `✓ Horas laborales anuales actualizadas: ${val} h/año`);
+  // move alert to workers page context
+  const alertEl = document.getElementById('alertMsg');
+  document.querySelector('#page-workers .card').insertAdjacentElement('afterend', alertEl);
 }
 
 function renderWorkersTable(){
