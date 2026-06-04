@@ -189,16 +189,18 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
   .sidebar{width:52px}.nav-item span{display:none}.sidebar-section{display:none}
   .grid3{grid-template-columns:1fr 1fr}
 }
-.an-kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:1rem}
-.an-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem}
-.an-kpi-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
-.an-kpi-val{font-size:28px;font-weight:300;color:var(--text);letter-spacing:-.02em;line-height:1}
-.an-kpi-unit{font-size:12px;color:var(--text3);margin-top:2px}
-.an-chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:1rem}
-.an-chart-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:1rem}
-.an-det-section{margin-bottom:1.5rem}
-.an-det-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:.75rem;display:flex;align-items:center;gap:8px}
+.an-det-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.an-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+.an-kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px}
+.an-kpi-label{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px}
+.an-kpi-val{font-size:20px;font-weight:300;color:var(--text);letter-spacing:-.02em;line-height:1}
+.an-kpi-unit{font-size:10px;color:var(--text3);margin-top:1px}
+.an-chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.75rem;margin-bottom:6px}
+.an-chart-title{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+.an-det-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:10px 12px}
+.an-det-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px}
 .an-det-title::after{content:'';flex:1;height:1px;background:var(--border)}
+@media(max-width:900px){.an-det-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -1176,55 +1178,59 @@ function renderAnalytics(data){
   const COLORS = ['#185FA5','#e05c2a','#2a9d8f','#e9c46a','#8338ec','#fb5607','#06d6a0','#ef476f','#118ab2','#ffd166'];
 
   if(data.tipo==='embalar'){
-    // Para cada detalle: KPI mes actual + 2 gráficos (tons y coste/ton)
+    const grid = document.createElement('div');
+    grid.className = 'an-det-grid';
+    content.appendChild(grid);
+
     Object.entries(data.series).forEach(([det, serie], di)=>{
       const curTons     = serie.tons[curMonthIdx]||0;
       const curCosteTon = serie.costeTon[curMonthIdx]||0;
-      // Último mes con datos para coste
-      const lastCoste = [...serie.costeTon].reverse().find(v=>v>0)||0;
-      const lastTons  = [...serie.tons].reverse().find(v=>v>0)||0;
+      const lastCoste   = [...serie.costeTon].reverse().find(v=>v>0)||0;
 
       const sec = document.createElement('div');
       sec.className='an-det-section';
       sec.innerHTML=
-        '<div class="an-det-title"><i class="ti ti-package"></i> '+det+'</div>'+
+        '<div class="an-det-title"><i class="ti ti-package" style="font-size:13px"></i> '+det+'</div>'+
         '<div class="an-kpi-grid">'+
           '<div class="an-kpi">'+
-            '<div class="an-kpi-label">Toneladas mes actual</div>'+
+            '<div class="an-kpi-label">Tn mes actual</div>'+
             '<div class="an-kpi-val">'+curTons.toFixed(1)+'</div>'+
             '<div class="an-kpi-unit">Tn</div>'+
           '</div>'+
           '<div class="an-kpi">'+
-            '<div class="an-kpi-label">Coste/Tn mes actual</div>'+
+            '<div class="an-kpi-label">Coste/Tn</div>'+
             '<div class="an-kpi-val">'+(curCosteTon>0?curCosteTon.toFixed(2):lastCoste.toFixed(2))+'</div>'+
             '<div class="an-kpi-unit">€/Tn</div>'+
           '</div>'+
           '<div class="an-kpi">'+
-            '<div class="an-kpi-label">Total acumulado 12m</div>'+
+            '<div class="an-kpi-label">Total 12m</div>'+
             '<div class="an-kpi-val">'+serie.tons.reduce((a,b)=>a+b,0).toFixed(1)+'</div>'+
             '<div class="an-kpi-unit">Tn</div>'+
           '</div>'+
         '</div>'+
-        '<div class="grid2">'+
-          '<div class="an-chart-card"><div class="an-chart-title">Toneladas producidas</div><canvas id="ch-tons-'+di+'"></canvas></div>'+
-          '<div class="an-chart-card"><div class="an-chart-title">Coste por tonelada (€/Tn)</div><canvas id="ch-coste-'+di+'"></canvas></div>'+
+        '<div class="grid2" style="gap:6px">'+
+          '<div class="an-chart-card"><div class="an-chart-title">Toneladas / mes</div><canvas id="ch-tons-'+di+'" height="120"></canvas></div>'+
+          '<div class="an-chart-card"><div class="an-chart-title">Coste €/Tn</div><canvas id="ch-coste-'+di+'" height="120"></canvas></div>'+
         '</div>';
-      content.appendChild(sec);
+      grid.appendChild(sec);
 
       const color = COLORS[di%COLORS.length];
       const commonOpts = {
         responsive:true,
         plugins:{legend:{display:false}},
-        scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#f0ede8'}}}
+        scales:{
+          x:{grid:{display:false},ticks:{font:{size:8},maxRotation:45}},
+          y:{beginAtZero:true,grid:{color:'#f0ede8'},ticks:{font:{size:8}}}
+        }
       };
       anCharts.push(new Chart(document.getElementById('ch-tons-'+di), {
         type:'bar',
-        data:{ labels:months, datasets:[{data:serie.tons,backgroundColor:color+'33',borderColor:color,borderWidth:2,borderRadius:4}]},
+        data:{labels:months,datasets:[{data:serie.tons,backgroundColor:color+'33',borderColor:color,borderWidth:1.5,borderRadius:3}]},
         options:{...commonOpts}
       }));
       anCharts.push(new Chart(document.getElementById('ch-coste-'+di), {
         type:'line',
-        data:{ labels:months, datasets:[{data:serie.costeTon,borderColor:color,backgroundColor:color+'22',fill:true,tension:.3,pointRadius:4,pointBackgroundColor:color}]},
+        data:{labels:months,datasets:[{data:serie.costeTon,borderColor:color,backgroundColor:color+'22',fill:true,tension:.3,pointRadius:3,pointBackgroundColor:color}]},
         options:{...commonOpts}
       }));
     });
@@ -1234,36 +1240,42 @@ function renderAnalytics(data){
     }
 
   } else {
-    // Trabajos sin balas — horas por detalle
+    const grid = document.createElement('div');
+    grid.className = 'an-det-grid';
+    content.appendChild(grid);
+
     Object.entries(data.series).forEach(([det, serie], di)=>{
-      const curHoras = serie.horas[curMonthIdx]||0;
+      const curHoras   = serie.horas[curMonthIdx]||0;
       const totalHoras = serie.horas.reduce((a,b)=>a+b,0);
 
       const sec = document.createElement('div');
       sec.className='an-det-section';
       sec.innerHTML=
-        '<div class="an-det-title"><i class="ti ti-clock"></i> '+det+'</div>'+
-        '<div class="an-kpi-grid">'+
+        '<div class="an-det-title"><i class="ti ti-clock" style="font-size:13px"></i> '+det+'</div>'+
+        '<div class="an-kpi-grid" style="grid-template-columns:1fr 1fr">'+
           '<div class="an-kpi">'+
             '<div class="an-kpi-label">Horas mes actual</div>'+
             '<div class="an-kpi-val">'+curHoras.toFixed(1)+'</div>'+
             '<div class="an-kpi-unit">h</div>'+
           '</div>'+
           '<div class="an-kpi">'+
-            '<div class="an-kpi-label">Total acumulado 12m</div>'+
+            '<div class="an-kpi-label">Total 12m</div>'+
             '<div class="an-kpi-val">'+totalHoras.toFixed(1)+'</div>'+
             '<div class="an-kpi-unit">h</div>'+
           '</div>'+
         '</div>'+
-        '<div class="an-chart-card"><div class="an-chart-title">Horas dedicadas por mes</div><canvas id="ch-horas-'+di+'"></canvas></div>';
-      content.appendChild(sec);
+        '<div class="an-chart-card"><div class="an-chart-title">Horas por mes</div><canvas id="ch-horas-'+di+'" height="120"></canvas></div>';
+      grid.appendChild(sec);
 
       const color = COLORS[di%COLORS.length];
       anCharts.push(new Chart(document.getElementById('ch-horas-'+di), {
         type:'bar',
-        data:{ labels:months, datasets:[{data:serie.horas,backgroundColor:color+'33',borderColor:color,borderWidth:2,borderRadius:4}]},
+        data:{labels:months,datasets:[{data:serie.horas,backgroundColor:color+'33',borderColor:color,borderWidth:1.5,borderRadius:3}]},
         options:{responsive:true,plugins:{legend:{display:false}},
-          scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#f0ede8'}}}}
+          scales:{
+            x:{grid:{display:false},ticks:{font:{size:8},maxRotation:45}},
+            y:{beginAtZero:true,grid:{color:'#f0ede8'},ticks:{font:{size:8}}}
+          }}
       }));
     });
 
