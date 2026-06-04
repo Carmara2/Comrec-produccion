@@ -901,16 +901,26 @@ function removeWorker(i){
 }
 
 function renderJobsList(){
+  const BALA_JOBS=["Embalar 1900","Embalar 2000"];
   const c=document.getElementById('jobsList');c.innerHTML='';
   Object.entries(S.jobs).forEach(([jn,cfg])=>{
+    const isBala=BALA_JOBS.includes(jn);
     const div=document.createElement('div');div.className='job-card';
-    const tagsHtml=cfg.options.map(o=>{
+    const tagsHtml=cfg.options.map((o,oi)=>{
       const nm=typeof o==='object'?o.name:String(o);
-      const pb=typeof o==='object'&&o.pesoBala?` <span style="color:var(--text3);font-size:10px">${o.pesoBala}Tn</span>`:'';
+      const pb=typeof o==='object'?parseFloat(o.pesoBala)||0:0;
       const nmSafe=nm.replace(/'/g,"\'");
-      return '<span class="tag">'+nm+pb+'<button onclick="removeDetail(\''+jn+'\',\''+nmSafe+'\');event.stopPropagation()" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:11px;margin-left:2px;padding:0">×</button></span>';
+      const pesoTag=isBala
+        ?`<span onclick="editPeso('${jn}',${oi})" title="Clic para editar peso" style="cursor:pointer;color:var(--blue);font-size:10px;margin-left:3px">${pb>0?pb+'Tn':'+ peso'}</span>`
+        :'';
+      return `<span class="tag">${nm}${pesoTag}<button onclick="removeDetail('${jn}','${nmSafe}');event.stopPropagation()" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:11px;margin-left:3px;padding:0">×</button></span>`;
     }).join('');
+
     const jnKey=jn.replace(/\s/g,'_');
+    const pesoInput=isBala
+      ?`<input type="number" id="peso-${jnKey}" min="0" step="0.1" placeholder="Tn/bala" style="height:28px;width:90px;font-size:12px;text-align:center"/>`
+      :'';
+
     div.innerHTML=
       '<div class="job-card-head">'+
         '<div><span style="font-weight:600">'+jn+'</span>'+
@@ -920,14 +930,28 @@ function renderJobsList(){
       '</div>'+
       '<div class="job-card-body">'+
         '<div style="margin-bottom:8px">'+tagsHtml+'</div>'+
-        '<div style="display:flex;gap:8px">'+
+        '<div style="display:flex;gap:6px;align-items:center">'+
           '<input type="text" id="det-'+jnKey+'" placeholder="Nuevo detalle..." style="height:28px;flex:1;font-size:12px"/>'+
+          pesoInput+
           '<button class="btn btn-primary" style="height:28px;padding:0 10px;font-size:12px" onclick="addDetail(\''+jn+'\')"><i class="ti ti-plus"></i> Añadir</button>'+
         '</div>'+
-      '</div>';
+        (isBala?'<p style="font-size:11px;color:var(--text3);margin-top:4px">Pulsa el peso en azul para editarlo · Tn/bala se guarda por detalle</p>':'')
+      +'</div>';
     c.appendChild(div);
   });
 }
+
+function editPeso(jn, oi){
+  const o=S.jobs[jn].options[oi];
+  const nm=typeof o==='object'?o.name:String(o);
+  const pb=typeof o==='object'?parseFloat(o.pesoBala)||0:0;
+  const nuevo=parseFloat(prompt('Peso por bala de "'+nm+'" (Tn):', pb));
+  if(isNaN(nuevo)||nuevo<0)return;
+  S.jobs[jn].options[oi]={name:nm,pesoBala:nuevo};
+  persist();
+  renderJobsList();
+}
+
 
 function addJob(){
   const name=document.getElementById('newJobName').value.trim();
@@ -945,12 +969,20 @@ function removeJob(name){
   populateJobSelect(document.getElementById('new-job'),'');
 }
 function addDetail(jn){
+  const BALA_JOBS=["Embalar 1900","Embalar 2000"];
   const k='det-'+jn.replace(/\s/g,'_');
   const v=document.getElementById(k).value.trim();
   if(!v)return;
   const exists=S.jobs[jn].options.some(o=>(typeof o==='object'?o.name:o)===v);
   if(exists){alert('Ya existe.');return;}
-  S.jobs[jn].options.push({name:v,pesoBala:0});
+  let pesoBala=0;
+  if(BALA_JOBS.includes(jn)){
+    const pk='peso-'+jn.replace(/\s/g,'_');
+    const pEl=document.getElementById(pk);
+    pesoBala=pEl?parseFloat(pEl.value)||0:0;
+    if(pEl)pEl.value='';
+  }
+  S.jobs[jn].options.push({name:v,pesoBala});
   persist();document.getElementById(k).value='';renderJobsList();
 }
 function removeDetail(jn,opt){
