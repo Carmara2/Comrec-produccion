@@ -6,6 +6,7 @@
 <title>Partes de Trabajo · OMREC</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -237,6 +238,9 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
     <div class="nav-item" id="nav-analytics" onclick="showPage('analytics',this)">
       <i class="ti ti-chart-bar"></i><span>Analítica</span>
     </div>
+    <div class="nav-item" id="nav-export" onclick="showPage('export',this)">
+      <i class="ti ti-file-spreadsheet"></i><span>Exportar Excel</span>
+    </div>
 
     <div class="sidebar-section">Config.</div>
     <div class="nav-item" id="nav-workers" onclick="showPage('workers',this)">
@@ -421,6 +425,67 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
     </div>
 
 
+    <!-- ══ EXPORTAR ══ -->
+    <div class="page" id="page-export">
+      <p class="page-title">Exportar a Excel</p>
+      <p class="page-sub">Descarga partes y producciones filtrados por período</p>
+
+      <div class="card">
+        <div class="card-title"><i class="ti ti-calendar-range"></i> Período de extracción</div>
+        <div class="grid3">
+          <div class="field">
+            <label>Fecha inicio</label>
+            <input type="date" id="exp-from"/>
+          </div>
+          <div class="field">
+            <label>Fecha fin</label>
+            <input type="date" id="exp-to"/>
+          </div>
+          <div class="field" style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn btn-ghost" onclick="setExpPeriod('month')" style="height:34px;flex:1;font-size:12px">Mes actual</button>
+            <button class="btn btn-ghost" onclick="setExpPeriod('quarter')" style="height:34px;flex:1;font-size:12px">Trimestre</button>
+            <button class="btn btn-ghost" onclick="setExpPeriod('year')" style="height:34px;flex:1;font-size:12px">Año</button>
+          </div>
+        </div>
+
+        <div style="margin-top:1rem">
+          <label style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Hojas a incluir</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="exp-partes" checked style="width:16px;height:16px"> Partes de trabajo
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="exp-prod" checked style="width:16px;height:16px"> Producciones
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="exp-preview" style="display:none">
+        <div class="card-title"><i class="ti ti-eye"></i> Vista previa
+          <span id="exp-preview-count" style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px;font-size:12px;color:var(--text2)"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="aux-table" id="exp-preview-table">
+            <thead id="exp-preview-head"></thead>
+            <tbody id="exp-preview-body"></tbody>
+          </table>
+        </div>
+        <p style="font-size:11px;color:var(--text3);margin-top:8px">Mostrando primeras 10 filas de Partes como muestra.</p>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:.5rem">
+        <button class="btn btn-primary" onclick="previewExport()" style="height:38px">
+          <i class="ti ti-search"></i> Previsualizar
+        </button>
+        <button class="btn btn-primary" id="exp-download-btn" onclick="downloadExport()" style="height:38px;background:#166534;display:none">
+          <i class="ti ti-download"></i> Descargar Excel
+        </button>
+      </div>
+      <div class="alert" id="exp-alert" style="margin-top:.75rem"></div>
+    </div>
+
+    <!-- ══ ANALÍTICA ══ -->
     <!-- ══ ANALÍTICA ══ -->
     <div class="page" id="page-analytics">
       <p class="page-title">Analítica</p>
@@ -457,7 +522,7 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwVxCxC97fnBalhzv3DX1bLPvqJos-LNKq5RdvxBlKdfcliLHAFIX-56aJLX_5JWoTWjA/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw8rfNOprtAvGZFIStabTKr1FyKSSumqXe-rDmb2c7LfWKjtTltdkcXFLtN_a6nHA4soA/exec";
 
 let S = {
   horasAnuales: 1800,
@@ -507,6 +572,7 @@ populateJobSelect(document.getElementById('new-job'),'');
 renderJobsList();
 renderWorkersTable();
 populateAnJobSelect();
+setExpPeriod('month'); // período por defecto
 
 // Sincronizar al cargar — con reintento si falla
 loadFromSheets().catch(()=>{
@@ -1119,6 +1185,138 @@ function addDetail(jn){
 function removeDetail(jn,opt){
   S.jobs[jn].options=S.jobs[jn].options.filter(o=>(typeof o==='object'?o.name:o)!==opt);
   persist();renderJobsList();
+}
+
+// ── EXPORTAR EXCEL ─────────────────────────────────────────────
+let expData = null; // {partes:[], producciones:[]}
+
+function setExpPeriod(period){
+  const now = new Date();
+  let from, to;
+  if(period==='month'){
+    from = new Date(now.getFullYear(), now.getMonth(), 1);
+    to   = new Date(now.getFullYear(), now.getMonth()+1, 0);
+  } else if(period==='quarter'){
+    const q = Math.floor(now.getMonth()/3);
+    from = new Date(now.getFullYear(), q*3, 1);
+    to   = new Date(now.getFullYear(), q*3+3, 0);
+  } else {
+    from = new Date(now.getFullYear(), 0, 1);
+    to   = new Date(now.getFullYear(), 11, 31);
+  }
+  document.getElementById('exp-from').value = from.toISOString().split('T')[0];
+  document.getElementById('exp-to').value   = to.toISOString().split('T')[0];
+}
+
+async function fetchExportData(){
+  const from = document.getElementById('exp-from').value;
+  const to   = document.getElementById('exp-to').value;
+  if(!from||!to){ showExpAlert('err','Selecciona el período de extracción.'); return null; }
+  if(from>to){ showExpAlert('err','La fecha inicio no puede ser posterior a la fecha fin.'); return null; }
+
+  showExpAlert('info','<i class="ti ti-loader-2"></i> Consultando Google Sheets...');
+
+  try{
+    const url = SCRIPT_URL+'?action=export&from='+from+'&to='+to+'&t='+Date.now();
+    const res  = await fetch(url);
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Error del servidor');
+    return data;
+  } catch(e){
+    showExpAlert('err','Error al obtener datos: '+e.message);
+    return null;
+  }
+}
+
+async function previewExport(){
+  const data = await fetchExportData();
+  if(!data) return;
+  expData = data;
+
+  const incPartes = document.getElementById('exp-partes').checked;
+  const incProd   = document.getElementById('exp-prod').checked;
+  const totalP = incPartes ? data.partes.length-1 : 0;
+  const totalPr = incProd  ? data.producciones.length-1 : 0;
+
+  document.getElementById('exp-preview-count').textContent =
+    `— ${totalP} partes · ${totalPr} producciones`;
+
+  // Preview table (primeras 10 filas de partes)
+  const preview = document.getElementById('exp-preview');
+  preview.style.display = 'block';
+  document.getElementById('exp-download-btn').style.display = 'inline-flex';
+
+  const head = document.getElementById('exp-preview-head');
+  const body = document.getElementById('exp-preview-body');
+  head.innerHTML=''; body.innerHTML='';
+
+  if(data.partes.length>1){
+    const hrow = document.createElement('tr');
+    data.partes[0].forEach(h=>{
+      const th=document.createElement('th'); th.textContent=h; hrow.appendChild(th);
+    });
+    head.appendChild(hrow);
+
+    data.partes.slice(1,11).forEach((row,ri)=>{
+      const tr=document.createElement('tr');
+      row.forEach(cell=>{
+        const td=document.createElement('td');
+        td.textContent=cell;
+        td.style.cssText='padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border)';
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+  } else {
+    body.innerHTML='<tr><td colspan="14" style="padding:1rem;text-align:center;color:var(--text3)">Sin partes en este período.</td></tr>';
+  }
+
+  showExpAlert('ok', `✓ Datos listos: ${totalP} partes y ${totalPr} producciones del período seleccionado.`);
+}
+
+function downloadExport(){
+  if(!expData){ showExpAlert('err','Primero previsualiza los datos.'); return; }
+
+  const from = document.getElementById('exp-from').value;
+  const to   = document.getElementById('exp-to').value;
+  const incPartes = document.getElementById('exp-partes').checked;
+  const incProd   = document.getElementById('exp-prod').checked;
+
+  const wb = XLSX.utils.book_new();
+
+  if(incPartes && expData.partes.length>1){
+    const ws = XLSX.utils.aoa_to_sheet(expData.partes);
+    // Estilo cabecera
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for(let c=range.s.c; c<=range.e.c; c++){
+      const cell = ws[XLSX.utils.encode_cell({r:0,c})];
+      if(cell) cell.s = {font:{bold:true},fill:{fgColor:{rgb:'185FA5'}}};
+    }
+    // Anchos de columna
+    ws['!cols'] = [18,12,8,16,16,10,10,8,14,18,9,12,12,20].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws, 'Partes');
+  }
+
+  if(incProd && expData.producciones.length>1){
+    const ws2 = XLSX.utils.aoa_to_sheet(expData.producciones);
+    ws2['!cols'] = [18,12,8,16,14,16,9,12,11,36,12,20].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws2, 'Producciones');
+  }
+
+  if(wb.SheetNames.length===0){
+    showExpAlert('err','No hay datos para exportar en el período seleccionado.');
+    return;
+  }
+
+  const fname = `OMREC_Produccion_${from}_${to}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  showExpAlert('ok', `✓ Descargando "${fname}"`);
+}
+
+function showExpAlert(type,msg){
+  const el=document.getElementById('exp-alert');
+  el.className='alert on alert-'+(type==='ok'?'ok':type==='err'?'err':'info');
+  el.innerHTML=msg;
 }
 
 // ── ANALÍTICA ──────────────────────────────────────────────────
