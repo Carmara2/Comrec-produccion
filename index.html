@@ -1380,11 +1380,12 @@ async function previewExport(){
     head.appendChild(hrow);
 
     data.partes.slice(1,11).forEach((row,ri)=>{
+      const formatted = formatPartesRow(row, false);
       const tr=document.createElement('tr');
-      row.forEach(cell=>{
+      formatted.forEach(cell=>{
         const td=document.createElement('td');
         td.textContent=cell;
-        td.style.cssText='padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border)';
+        td.style.cssText='padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);white-space:nowrap';
         tr.appendChild(td);
       });
       body.appendChild(tr);
@@ -1402,33 +1403,56 @@ function pad2(n){ return String(n).padStart(2,'0'); }
 function parseDate(v){
   if(!v) return null;
   const s = String(v).trim();
-  // YYYY-MM-DDTHH:MM:SS (from Apps Script cleanRow)
+  // Already formatted DD/MM/YYYY
+  if(/^\d{2}\/\d{2}\/\d{4}/.test(s)) return null;
+
+  // ISO with Z: 2026-06-01T04:00:00.000Z or 1899-12-30T06:14:44.000Z
+  // Use UTC to avoid timezone shifts
   if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)){
-    const [datePart, timePart] = s.split('T');
-    const [y,mo,d] = datePart.split('-');
-    const [h,mi] = timePart.split(':');
-    return {d:parseInt(d),mo:parseInt(mo),y:parseInt(y),h:parseInt(h),mi:parseInt(mi)};
+    const dt = new Date(s);
+    if(!isNaN(dt)){
+      // For time-only values (date = 1899-12-30), extract UTC time
+      const isTimeOnly = s.startsWith('1899-12-30');
+      if(isTimeOnly){
+        return {d:30,mo:12,y:1899,h:dt.getUTCHours(),mi:dt.getUTCMinutes()};
+      }
+      // For real dates, use UTC to avoid timezone issues
+      return {
+        d:  dt.getUTCDate(),
+        mo: dt.getUTCMonth()+1,
+        y:  dt.getUTCFullYear(),
+        h:  dt.getUTCHours(),
+        mi: dt.getUTCMinutes()
+      };
+    }
   }
-  // YYYY-MM-DD
+  // YYYY-MM-DD plain
   if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
     const [y,mo,d] = s.split('-');
     return {d:parseInt(d),mo:parseInt(mo),y:parseInt(y),h:0,mi:0};
   }
-  // DD/MM/YYYY HH:MM or similar - already formatted
-  if(/^\d{2}\/\d{2}\/\d{4}/.test(s)) return null; // already good
-  // Try JS Date as fallback
-  const dt = new Date(s);
-  if(!isNaN(dt)){
-    return {d:dt.getDate(),mo:dt.getMonth()+1,y:dt.getFullYear(),h:dt.getHours(),mi:dt.getMinutes()};
-  }
   return null;
+}
+
+function fmtHoraFromISO(s){
+  // Specifically for 1899-12-30T06:14:44.000Z style time values
+  const m = s.match(/T(\d{2}):(\d{2})/);
+  return m ? m[1]+':'+m[2] : s;
 }
 
 function fmtTimestamp(v){
   if(!v && v!==0) return '';
   const s = String(v).trim();
-  // Already formatted DD/MM/YYYY HH:MM
+  // Already formatted
   if(/^\d{2}\/\d{2}\/\d{4}\s/.test(s)) return s;
+  // ISO with Z — use UTC
+  if(/^\d{4}-\d{2}-\d{2}T/.test(s)){
+    const dt = new Date(s);
+    if(!isNaN(dt)){
+      return pad2(dt.getUTCDate())+'/'+pad2(dt.getUTCMonth()+1)+'/'+dt.getUTCFullYear()+
+             ' '+pad2(dt.getUTCHours())+':'+pad2(dt.getUTCMinutes());
+    }
+  }
   const p = parseDate(v);
   if(!p) return s;
   return pad2(p.d)+'/'+pad2(p.mo)+'/'+p.y+' '+pad2(p.h)+':'+pad2(p.mi);
@@ -1437,10 +1461,23 @@ function fmtTimestamp(v){
 function fmtFecha(v){
   if(!v && v!==0) return '';
   const s = String(v).trim();
-  if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+  // Already DD/MM/YYYY
+  if(/^\d{2}\/\d{2}\/\d{4}/.test(s)) return s.substring(0,10);
+  // YYYY-MM-DD plain
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
+    const [y,mo,d] = s.split('-');
+    return pad2(parseInt(d))+'/'+pad2(parseInt(mo))+'/'+y;
+  }
+  // ISO with Z — use UTC
+  if(/^\d{4}-\d{2}-\d{2}T/.test(s)){
+    const dt = new Date(s);
+    if(!isNaN(dt) && !s.startsWith('1899')){
+      return pad2(dt.getUTCDate())+'/'+pad2(dt.getUTCMonth()+1)+'/'+dt.getUTCFullYear();
+    }
+  }
   const p = parseDate(v);
-  if(!p) return s;
-  return pad2(p.d)+'/'+pad2(p.mo)+'/'+p.y;
+  if(p && p.y !== 1899) return pad2(p.d)+'/'+pad2(p.mo)+'/'+p.y;
+  return s;
 }
 
 function fmtHora(v){
@@ -1448,15 +1485,13 @@ function fmtHora(v){
   const s = String(v).trim();
   // HH:MM already correct
   if(/^\d{1,2}:\d{2}$/.test(s)) return s;
-  // From ISO datetime: extract time part
-  if(/^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.test(s)){
+  // ISO datetime (includes 1899-12-30T... time-only format from Sheets)
+  if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)){
     const m = s.match(/T(\d{2}):(\d{2})/);
     return m ? m[1]+':'+m[2] : s;
   }
-  // Numeric (Google Sheets time fraction) - ignore, return empty
-  if(!isNaN(parseFloat(s)) && !s.includes('-')) return '';
-  const p = parseDate(v);
-  if(p) return pad2(p.h)+':'+pad2(p.mi);
+  // Numeric fraction - ignore
+  if(!isNaN(parseFloat(s)) && !s.includes('-') && !s.includes('/')) return '';
   return s;
 }
 
