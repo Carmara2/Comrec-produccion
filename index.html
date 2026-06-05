@@ -530,7 +530,7 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw8rfNOprtAvGZFIStabTKr1FyKSSumqXe-rDmb2c7LfWKjtTltdkcXFLtN_a6nHA4soA/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxZx2qI8jqqmiQGoBfLba4LzQdZOA001tSJOAxl_Hrhh4xTEcKLPrgQRgfkVAkNZz-8/exec";
 
 let S = {
   horasAnuales: 1800,
@@ -1397,57 +1397,78 @@ async function previewExport(){
 }
 
 // Formatea un valor fecha/hora del Sheets
-function fmtTimestamp(v){
-  if(!v) return '';
-  const s = String(v);
-  // Si ya es ISO: 2026-06-01T10:00:00.000Z
-  const d = new Date(s);
-  if(!isNaN(d)){
-    const dd=String(d.getDate()).padStart(2,'0');
-    const mm=String(d.getMonth()+1).padStart(2,'0');
-    const yy=d.getFullYear();
-    const hh=String(d.getHours()).padStart(2,'0');
-    const min=String(d.getMinutes()).padStart(2,'0');
-    return `${dd}/${mm}/${yy} ${hh}:${min}`;
+function pad2(n){ return String(n).padStart(2,'0'); }
+
+function parseDate(v){
+  if(!v) return null;
+  const s = String(v).trim();
+  // YYYY-MM-DDTHH:MM:SS (from Apps Script cleanRow)
+  if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)){
+    const [datePart, timePart] = s.split('T');
+    const [y,mo,d] = datePart.split('-');
+    const [h,mi] = timePart.split(':');
+    return {d:parseInt(d),mo:parseInt(mo),y:parseInt(y),h:parseInt(h),mi:parseInt(mi)};
   }
-  return s;
+  // YYYY-MM-DD
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
+    const [y,mo,d] = s.split('-');
+    return {d:parseInt(d),mo:parseInt(mo),y:parseInt(y),h:0,mi:0};
+  }
+  // DD/MM/YYYY HH:MM or similar - already formatted
+  if(/^\d{2}\/\d{2}\/\d{4}/.test(s)) return null; // already good
+  // Try JS Date as fallback
+  const dt = new Date(s);
+  if(!isNaN(dt)){
+    return {d:dt.getDate(),mo:dt.getMonth()+1,y:dt.getFullYear(),h:dt.getHours(),mi:dt.getMinutes()};
+  }
+  return null;
+}
+
+function fmtTimestamp(v){
+  if(!v && v!==0) return '';
+  const s = String(v).trim();
+  // Already formatted DD/MM/YYYY HH:MM
+  if(/^\d{2}\/\d{2}\/\d{4}\s/.test(s)) return s;
+  const p = parseDate(v);
+  if(!p) return s;
+  return pad2(p.d)+'/'+pad2(p.mo)+'/'+p.y+' '+pad2(p.h)+':'+pad2(p.mi);
 }
 
 function fmtFecha(v){
-  if(!v) return '';
-  const s = String(v);
-  const d = new Date(s);
-  if(!isNaN(d)){
-    const dd=String(d.getDate()).padStart(2,'0');
-    const mm=String(d.getMonth()+1).padStart(2,'0');
-    const yy=d.getFullYear();
-    return `${dd}/${mm}/${yy}`;
-  }
-  // ya viene como YYYY-MM-DD
-  if(s.match(/^\d{4}-\d{2}-\d{2}$/)){
-    const [y,mo,dy]=s.split('-');
-    return `${dy}/${mo}/${y}`;
-  }
-  return s;
+  if(!v && v!==0) return '';
+  const s = String(v).trim();
+  if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+  const p = parseDate(v);
+  if(!p) return s;
+  return pad2(p.d)+'/'+pad2(p.mo)+'/'+p.y;
 }
 
 function fmtHora(v){
-  if(!v) return '';
+  if(!v && v!==0) return '';
   const s = String(v).trim();
-  // HH:MM ya correcto
-  if(s.match(/^\d{1,2}:\d{2}$/)) return s;
-  // ISO: 1899-12-30T06:44:00.000Z  o  2026-...T14:44:00Z
-  const d = new Date(s);
-  if(!isNaN(d)){
-    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  // HH:MM already correct
+  if(/^\d{1,2}:\d{2}$/.test(s)) return s;
+  // From ISO datetime: extract time part
+  if(/^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.test(s)){
+    const m = s.match(/T(\d{2}):(\d{2})/);
+    return m ? m[1]+':'+m[2] : s;
   }
+  // Numeric (Google Sheets time fraction) - ignore, return empty
+  if(!isNaN(parseFloat(s)) && !s.includes('-')) return '';
+  const p = parseDate(v);
+  if(p) return pad2(p.h)+':'+pad2(p.mi);
   return s;
 }
 
 function fmtNum(v, dec){
   if(v===''||v===null||v===undefined) return '';
-  const n = parseFloat(String(v));
-  if(isNaN(n)) return v;
+  const s = String(v).trim();
+  if(s==='') return '';
+  // Reject date-like strings
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return '';
+  if(/^\d{2}\/\d{2}\/\d{4}/.test(s)) return '';
+  const n = parseFloat(s);
+  if(isNaN(n)) return '';
   return n.toFixed(dec);
 }
 
