@@ -162,6 +162,7 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 .alert.on{display:flex}
 .alert-ok{background:var(--green-light);color:var(--green)}
 .alert-err{background:var(--red-light);color:var(--red-text)}
+.alert-err{line-height:1.6}
 .summary-count{font-size:12px;color:var(--text3);margin-left:6px;font-weight:400;text-transform:none;letter-spacing:0}
 
 /* ── AUX LISTS ──────────────────────────────────────────────── */
@@ -430,25 +431,32 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
       <p class="page-title">Exportar a Excel</p>
       <p class="page-sub">Descarga partes y producciones filtrados por período</p>
 
+      <!-- Selección rápida -->
+      <div class="card">
+        <div class="card-title"><i class="ti ti-calendar-stats"></i> Selección rápida de período</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="exp-month-sel" onchange="setExpPeriod('month-sel')"
+            style="height:36px;flex:2;min-width:160px;font-size:13px;border-radius:var(--radius);border:1px solid var(--border2);background:#fafaf8;padding:0 10px"></select>
+          <button class="btn btn-ghost" id="exp-btn-quarter" onclick="setExpPeriod('quarter')" style="height:36px;flex:1;min-width:100px;font-size:13px">Trimestre actual</button>
+          <button class="btn btn-ghost" id="exp-btn-year" onclick="setExpPeriod('year')" style="height:36px;flex:1;min-width:80px;font-size:13px">Año actual</button>
+        </div>
+      </div>
+
+      <!-- Período manual + hojas -->
       <div class="card">
         <div class="card-title"><i class="ti ti-calendar-range"></i> Período de extracción</div>
-        <div class="grid3">
-          <div class="field">
+        <div class="grid2" style="margin-bottom:1rem">
+          <div class="field" style="margin-bottom:0">
             <label>Fecha inicio</label>
             <input type="date" id="exp-from"/>
           </div>
-          <div class="field">
+          <div class="field" style="margin-bottom:0">
             <label>Fecha fin</label>
             <input type="date" id="exp-to"/>
           </div>
-          <div class="field" style="display:flex;align-items:flex-end;gap:8px">
-            <button class="btn btn-ghost" onclick="setExpPeriod('month')" style="height:34px;flex:1;font-size:12px">Mes actual</button>
-            <button class="btn btn-ghost" onclick="setExpPeriod('quarter')" style="height:34px;flex:1;font-size:12px">Trimestre</button>
-            <button class="btn btn-ghost" onclick="setExpPeriod('year')" style="height:34px;flex:1;font-size:12px">Año</button>
-          </div>
         </div>
 
-        <div style="margin-top:1rem">
+        <div>
           <label style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Hojas a incluir</label>
           <div style="display:flex;gap:12px;flex-wrap:wrap">
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
@@ -572,7 +580,7 @@ populateJobSelect(document.getElementById('new-job'),'');
 renderJobsList();
 renderWorkersTable();
 populateAnJobSelect();
-setExpPeriod('month'); // período por defecto
+buildMonthSelect(); setExpPeriod('month-sel'); document.getElementById('exp-month-sel').value='current';
 
 // Sincronizar al cargar — con reintento si falla
 loadFromSheets().catch(()=>{
@@ -775,6 +783,42 @@ function calcDuracion(t1,t2){
   return mins;
 }
 
+function toMins(t){
+  if(!t) return null;
+  const [h,m]=t.split(':').map(Number);
+  return h*60+m;
+}
+
+function checkOverlap(workers, t1, t2){
+  // Detecta si alguno de los workers ya tiene un registro solapado
+  const start1 = toMins(t1);
+  const end1   = toMins(t2);
+  if(start1===null || end1===null) return [];
+  const conflictos = [];
+  workers.forEach(w=>{
+    registros.forEach(r=>{
+      if(r.trabajador !== w) return;
+      const start2 = toMins(r.t1);
+      const end2   = toMins(r.t2);
+      if(start2===null || end2===null) return;
+      // Solapamiento: uno empieza antes de que el otro termine
+      // Manejo turno noche: si fin < inicio asumimos +24h
+      const s1 = start1, e1 = end1 < start1 ? end1+1440 : end1;
+      const s2 = start2, e2 = end2 < start2 ? end2+1440 : end2;
+      if(s1 < e2 && s2 < e1){
+        conflictos.push({
+          worker: w,
+          job: r.job,
+          detalle: r.detalle,
+          t1: r.t1,
+          t2: r.t2
+        });
+      }
+    });
+  });
+  return conflictos;
+}
+
 function addRegistro(){
   const workers=getNewSel();
   const t1=document.getElementById('new-t1').value;
@@ -796,6 +840,19 @@ function addRegistro(){
 
   if(!workers.length){showAlert('err','Selecciona al menos un trabajador.');return;}
   if(!job){showAlert('err','Selecciona el trabajo realizado.');return;}
+
+  // Validar solapamientos
+  if(t1 && t2){
+    const conflictos = checkOverlap(workers, t1, t2);
+    if(conflictos.length > 0){
+      const msgs = conflictos.map(c=>
+        `• ${c.worker}: ya tiene "${c.job}${c.detalle?' · '+c.detalle:''}" de ${c.t1} a ${c.t2}`
+      );
+      showAlert('err', 'Solapamiento detectado:<br>'+msgs.join('<br>'));
+      return;
+    }
+  }
+
   workers.forEach(w=>registros.push({
     id:Date.now()+Math.random(),trabajador:w,t1,t2,
     duracion_min:durMin,job,detalle,obs,numBalas,pesoBala
@@ -1190,22 +1247,87 @@ function removeDetail(jn,opt){
 // ── EXPORTAR EXCEL ─────────────────────────────────────────────
 let expData = null; // {partes:[], producciones:[]}
 
+function buildMonthSelect(){
+  const sel = document.getElementById('exp-month-sel');
+  if(!sel) return;
+  sel.innerHTML = '';
+  const now = new Date();
+  // Opción vacía
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = '— Mes —';
+  sel.appendChild(empty);
+  // Últimos 13 meses (mes actual + 12 anteriores)
+  for(let i=0; i<13; i++){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const opt = document.createElement('option');
+    opt.value = i === 0 ? 'current' : d.getFullYear()+'-'+(d.getMonth()+1);
+    const label = i === 0
+      ? 'Mes actual (' + d.toLocaleDateString('es-ES',{month:'long',year:'numeric'}) + ')'
+      : d.toLocaleDateString('es-ES',{month:'long',year:'numeric'});
+    opt.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+    sel.appendChild(opt);
+  }
+}
+
+function resetPeriodBtns(){
+  ['quarter','year'].forEach(p=>{
+    const b=document.getElementById('exp-btn-'+p);
+    if(b){ b.style.background=''; b.style.color=''; b.style.borderColor=''; }
+  });
+  const sel=document.getElementById('exp-month-sel');
+  if(sel) sel.style.background='';
+}
+
 function setExpPeriod(period){
   const now = new Date();
   let from, to;
-  if(period==='month'){
-    from = new Date(now.getFullYear(), now.getMonth(), 1);
-    to   = new Date(now.getFullYear(), now.getMonth()+1, 0);
+  resetPeriodBtns();
+
+  if(period==='month-sel'){
+    const sel = document.getElementById('exp-month-sel');
+    const val = sel.value;
+    if(!val){ return; }
+    let yr, mo;
+    if(val==='current'){ yr=now.getFullYear(); mo=now.getMonth(); }
+    else { const parts=val.split('-'); yr=parseInt(parts[0]); mo=parseInt(parts[1])-1; }
+    from = new Date(yr, mo, 1);
+    to   = new Date(yr, mo+1, 0);
+    // Highlight select
+    sel.style.background='var(--blue-light)';
+    sel.style.borderColor='var(--blue)';
   } else if(period==='quarter'){
     const q = Math.floor(now.getMonth()/3);
     from = new Date(now.getFullYear(), q*3, 1);
     to   = new Date(now.getFullYear(), q*3+3, 0);
+    // Reset month select
+    const sel=document.getElementById('exp-month-sel');
+    if(sel){ sel.value=''; sel.style.background=''; sel.style.borderColor=''; }
+    // Highlight button
+    const btn=document.getElementById('exp-btn-quarter');
+    if(btn){ btn.style.background='var(--blue)'; btn.style.color='#fff'; btn.style.borderColor='var(--blue)'; }
   } else {
     from = new Date(now.getFullYear(), 0, 1);
     to   = new Date(now.getFullYear(), 11, 31);
+    // Reset month select
+    const sel=document.getElementById('exp-month-sel');
+    if(sel){ sel.value=''; sel.style.background=''; sel.style.borderColor=''; }
+    // Highlight button
+    const btn=document.getElementById('exp-btn-year');
+    if(btn){ btn.style.background='var(--blue)'; btn.style.color='#fff'; btn.style.borderColor='var(--blue)'; }
   }
+
   document.getElementById('exp-from').value = from.toISOString().split('T')[0];
   document.getElementById('exp-to').value   = to.toISOString().split('T')[0];
+
+  // Resetear si el usuario cambia las fechas manualmente
+  ['exp-from','exp-to'].forEach(id=>{
+    document.getElementById(id).addEventListener('change', ()=>{
+      resetPeriodBtns();
+      const sel=document.getElementById('exp-month-sel');
+      if(sel){ sel.value=''; sel.style.background=''; sel.style.borderColor=''; }
+    }, {once:true});
+  });
 }
 
 async function fetchExportData(){
@@ -1274,6 +1396,133 @@ async function previewExport(){
   showExpAlert('ok', `✓ Datos listos: ${totalP} partes y ${totalPr} producciones del período seleccionado.`);
 }
 
+// Formatea un valor fecha/hora del Sheets
+function fmtTimestamp(v){
+  if(!v) return '';
+  const s = String(v);
+  // Si ya es ISO: 2026-06-01T10:00:00.000Z
+  const d = new Date(s);
+  if(!isNaN(d)){
+    const dd=String(d.getDate()).padStart(2,'0');
+    const mm=String(d.getMonth()+1).padStart(2,'0');
+    const yy=d.getFullYear();
+    const hh=String(d.getHours()).padStart(2,'0');
+    const min=String(d.getMinutes()).padStart(2,'0');
+    return `${dd}/${mm}/${yy} ${hh}:${min}`;
+  }
+  return s;
+}
+
+function fmtFecha(v){
+  if(!v) return '';
+  const s = String(v);
+  const d = new Date(s);
+  if(!isNaN(d)){
+    const dd=String(d.getDate()).padStart(2,'0');
+    const mm=String(d.getMonth()+1).padStart(2,'0');
+    const yy=d.getFullYear();
+    return `${dd}/${mm}/${yy}`;
+  }
+  // ya viene como YYYY-MM-DD
+  if(s.match(/^\d{4}-\d{2}-\d{2}$/)){
+    const [y,mo,dy]=s.split('-');
+    return `${dy}/${mo}/${y}`;
+  }
+  return s;
+}
+
+function fmtHora(v){
+  if(!v) return '';
+  const s = String(v).trim();
+  // HH:MM ya correcto
+  if(s.match(/^\d{1,2}:\d{2}$/)) return s;
+  // ISO: 1899-12-30T06:44:00.000Z  o  2026-...T14:44:00Z
+  const d = new Date(s);
+  if(!isNaN(d)){
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  return s;
+}
+
+function fmtNum(v, dec){
+  if(v===''||v===null||v===undefined) return '';
+  const n = parseFloat(String(v));
+  if(isNaN(n)) return v;
+  return n.toFixed(dec);
+}
+
+function formatPartesRow(row, isHeader){
+  if(isHeader) return row;
+  // Cols: 0=Timestamp 1=Fecha 2=Turno 3=Encargado 4=Trabajador
+  //       5=HoraInicio 6=HoraFin 7=Duracion 8=Trabajo 9=Detalle
+  //       10=NumBalas 11=ToneladasProd 12=CostePorTon 13=Observaciones
+  return [
+    fmtTimestamp(row[0]),   // Timestamp
+    fmtFecha(row[1]),       // Fecha
+    row[2],                  // Turno
+    row[3],                  // Encargado
+    row[4],                  // Trabajador
+    fmtHora(row[5]),        // Hora Inicio
+    fmtHora(row[6]),        // Hora Fin
+    row[7],                  // Duracion (min)
+    row[8],                  // Trabajo
+    row[9],                  // Detalle
+    row[10],                 // Num Balas
+    fmtNum(row[11],1),      // Toneladas producidas
+    fmtNum(row[12],2),      // Coste por tonelada
+    row[13]                  // Observaciones
+  ];
+}
+
+function formatProdRow(row, isHeader){
+  if(isHeader) return row;
+  // Cols: 0=Timestamp 1=Fecha 2=Turno 3=Encargado 4=Trabajo 5=Material
+  //       6=NumBalas 7=ToneladasProd 8=NumOperarios 9=Operarios 10=CosteProduccion 11=Obs
+  return [
+    fmtTimestamp(row[0]),
+    fmtFecha(row[1]),
+    row[2], row[3], row[4], row[5],
+    row[6],
+    fmtNum(row[7],1),
+    row[8], row[9],
+    fmtNum(row[10],2),
+    row[11]
+  ];
+}
+
+function applySheetStyles(ws, headerColor, colWidths, dataLength){
+  // Anchos
+  ws['!cols'] = colWidths.map(w=>({wch:w}));
+  // Cabecera: fondo color + texto blanco + negrita
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for(let c=range.s.c; c<=range.e.c; c++){
+    const hCell = ws[XLSX.utils.encode_cell({r:0,c})];
+    if(hCell){
+      hCell.s = {
+        font:{bold:true, color:{rgb:'FFFFFF'}, sz:10},
+        fill:{patternType:'solid', fgColor:{rgb:headerColor}},
+        alignment:{horizontal:'center',vertical:'center'},
+        border:{bottom:{style:'thin',color:{rgb:'AAAAAA'}}}
+      };
+    }
+  }
+  // Filas alternas
+  for(let r=1; r<=dataLength; r++){
+    const bg = r%2===0 ? 'EEF4FF' : 'FFFFFF';
+    for(let c=range.s.c; c<=range.e.c; c++){
+      const cell = ws[XLSX.utils.encode_cell({r,c})];
+      if(cell){
+        cell.s = {
+          fill:{patternType:'solid', fgColor:{rgb:bg}},
+          font:{sz:9},
+          alignment:{vertical:'center'},
+          border:{bottom:{style:'thin',color:{rgb:'DDDDDD'}}}
+        };
+      }
+    }
+  }
+}
+
 function downloadExport(){
   if(!expData){ showExpAlert('err','Primero previsualiza los datos.'); return; }
 
@@ -1285,32 +1534,31 @@ function downloadExport(){
   const wb = XLSX.utils.book_new();
 
   if(incPartes && expData.partes.length>1){
-    const ws = XLSX.utils.aoa_to_sheet(expData.partes);
-    // Estilo cabecera
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    for(let c=range.s.c; c<=range.e.c; c++){
-      const cell = ws[XLSX.utils.encode_cell({r:0,c})];
-      if(cell) cell.s = {font:{bold:true},fill:{fgColor:{rgb:'185FA5'}}};
-    }
-    // Anchos de columna
-    ws['!cols'] = [18,12,8,16,16,10,10,8,14,18,9,12,12,20].map(w=>({wch:w}));
+    const formatted = expData.partes.map((row,i)=>formatPartesRow(row, i===0));
+    const ws = XLSX.utils.aoa_to_sheet(formatted);
+    applySheetStyles(ws, '185FA5',
+      [20,11,8,16,16,9,9,8,14,18,9,13,13,22],
+      expData.partes.length-1);
     XLSX.utils.book_append_sheet(wb, ws, 'Partes');
   }
 
   if(incProd && expData.producciones.length>1){
-    const ws2 = XLSX.utils.aoa_to_sheet(expData.producciones);
-    ws2['!cols'] = [18,12,8,16,14,16,9,12,11,36,12,20].map(w=>({wch:w}));
+    const formatted2 = expData.producciones.map((row,i)=>formatProdRow(row, i===0));
+    const ws2 = XLSX.utils.aoa_to_sheet(formatted2);
+    applySheetStyles(ws2, '1A5276',
+      [20,11,8,16,14,16,9,12,11,36,13,22],
+      expData.producciones.length-1);
     XLSX.utils.book_append_sheet(wb, ws2, 'Producciones');
   }
 
   if(wb.SheetNames.length===0){
-    showExpAlert('err','No hay datos para exportar en el período seleccionado.');
+    showExpAlert('err','No hay datos para exportar en el periodo seleccionado.');
     return;
   }
 
-  const fname = `OMREC_Produccion_${from}_${to}.xlsx`;
+  const fname = 'OMREC_Produccion_'+from+'_'+to+'.xlsx';
   XLSX.writeFile(wb, fname);
-  showExpAlert('ok', `✓ Descargando "${fname}"`);
+  showExpAlert('ok', 'Descargando "'+fname+'"');
 }
 
 function showExpAlert(type,msg){
