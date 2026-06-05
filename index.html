@@ -1504,7 +1504,8 @@ function fmtNum(v, dec){
   if(/^\d{2}\/\d{2}\/\d{4}/.test(s)) return '';
   const n = parseFloat(s);
   if(isNaN(n)) return '';
-  return n.toFixed(dec);
+  // Usar coma como separador decimal (formato europeo)
+  return n.toFixed(dec).replace('.', ',');
 }
 
 function formatPartesRow(row, isHeader){
@@ -1547,10 +1548,9 @@ function formatProdRow(row, isHeader){
 }
 
 function applySheetStyles(ws, headerColor, colWidths, dataLength){
-  // Anchos
   ws['!cols'] = colWidths.map(w=>({wch:w}));
-  // Cabecera: fondo color + texto blanco + negrita
   const range = XLSX.utils.decode_range(ws['!ref']);
+  // Cabecera
   for(let c=range.s.c; c<=range.e.c; c++){
     const hCell = ws[XLSX.utils.encode_cell({r:0,c})];
     if(hCell){
@@ -1562,16 +1562,21 @@ function applySheetStyles(ws, headerColor, colWidths, dataLength){
       };
     }
   }
-  // Filas alternas
+  // Filas alternas — forzar tipo texto en celdas con coma decimal
   for(let r=1; r<=dataLength; r++){
     const bg = r%2===0 ? 'EEF4FF' : 'FFFFFF';
     for(let c=range.s.c; c<=range.e.c; c++){
-      const cell = ws[XLSX.utils.encode_cell({r,c})];
+      const cellRef = XLSX.utils.encode_cell({r,c});
+      const cell = ws[cellRef];
       if(cell){
+        // Si el valor contiene coma decimal, forzar tipo string
+        if(typeof cell.v === 'string' && /^\d+,\d+$/.test(cell.v)){
+          cell.t = 's'; // string type
+        }
         cell.s = {
           fill:{patternType:'solid', fgColor:{rgb:bg}},
           font:{sz:9},
-          alignment:{vertical:'center'},
+          alignment:{vertical:'center', horizontal: cell.t==='s'&&/^\d/.test(String(cell.v)) ? 'right' : 'left'},
           border:{bottom:{style:'thin',color:{rgb:'DDDDDD'}}}
         };
       }
