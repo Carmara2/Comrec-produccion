@@ -580,7 +580,7 @@ populateJobSelect(document.getElementById('new-job'),'');
 renderJobsList();
 renderWorkersTable();
 populateAnJobSelect();
-buildMonthSelect(); setExpPeriod('month-sel'); document.getElementById('exp-month-sel').value='current';
+buildMonthSelect(); document.getElementById('exp-month-sel').value='current'; setExpPeriod('month-sel');
 
 // Sincronizar al cargar — con reintento si falla
 loadFromSheets().catch(()=>{
