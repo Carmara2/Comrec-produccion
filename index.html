@@ -1223,6 +1223,23 @@ function renderAnalytics(data){
           y:{beginAtZero:true,grid:{color:'#f0ede8'},ticks:{font:{size:8}}}
         }
       };
+
+      // Forward-fill coste/Tn: si un mes es 0 (sin producción) usar el último valor conocido
+      // pero marcar el punto como hueco visual (null) para no confundir
+      const costeTonFilled = serie.costeTon.map((v,i,arr)=>{
+        if(v>0) return v;
+        // buscar último valor anterior no nulo
+        for(let j=i-1;j>=0;j--){ if(arr[j]>0) return null; } // null = sin datos previos
+        return null;
+      });
+      // Segunda pasada: forward-fill con el valor anterior para la línea continua
+      const costeTonLine = [...serie.costeTon];
+      let lastVal = null;
+      for(let i=0;i<costeTonLine.length;i++){
+        if(costeTonLine[i]>0){ lastVal=costeTonLine[i]; }
+        else if(lastVal!==null){ costeTonLine[i]=lastVal; }
+      }
+
       anCharts.push(new Chart(document.getElementById('ch-tons-'+di), {
         type:'bar',
         data:{labels:months,datasets:[{data:serie.tons,backgroundColor:color+'33',borderColor:color,borderWidth:1.5,borderRadius:3}]},
@@ -1230,8 +1247,17 @@ function renderAnalytics(data){
       }));
       anCharts.push(new Chart(document.getElementById('ch-coste-'+di), {
         type:'line',
-        data:{labels:months,datasets:[{data:serie.costeTon,borderColor:color,backgroundColor:color+'22',fill:true,tension:.3,pointRadius:3,pointBackgroundColor:color}]},
-        options:{...commonOpts}
+        data:{labels:months,datasets:[
+          // Línea continua con forward-fill (más tenue)
+          {data:costeTonLine,borderColor:color+'66',borderWidth:1,borderDash:[4,3],
+           backgroundColor:'transparent',fill:false,tension:.3,pointRadius:0,pointHoverRadius:0},
+          // Línea real solo donde hay datos
+          {data:serie.costeTon.map(v=>v>0?v:null),borderColor:color,
+           backgroundColor:color+'22',fill:true,tension:.3,
+           pointRadius:4,pointBackgroundColor:color,
+           spanGaps:false}
+        ]},
+        options:{...commonOpts, plugins:{legend:{display:false}}}
       }));
     });
 
