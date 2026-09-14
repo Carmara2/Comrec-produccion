@@ -358,8 +358,16 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 
     <!-- ══ TRABAJADORES ══ -->
     <div class="page" id="page-workers">
-      <p class="page-title">Trabajadores</p>
-      <p class="page-sub">Lista de trabajadores y encargados</p>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.25rem;flex-wrap:wrap;gap:8px">
+        <div>
+          <p class="page-title" style="margin-bottom:.25rem">Trabajadores</p>
+          <p class="page-sub">Lista de trabajadores y encargados</p>
+        </div>
+        <button class="btn btn-primary" onclick="saveWorkersToSheets()" id="saveWorkersBtn" style="height:36px;margin-top:4px">
+          <i class="ti ti-device-floppy"></i> Guardar en Sheets
+        </button>
+      </div>
+      <div class="alert" id="saveWorkersAlert" style="margin-bottom:.75rem"></div>
 
       <div class="card" style="margin-bottom:1rem">
         <div class="card-title"><i class="ti ti-settings"></i> Configuración jornada</div>
@@ -530,7 +538,7 @@ select:focus,input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,9
 </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxZx2qI8jqqmiQGoBfLba4LzQdZOA001tSJOAxl_Hrhh4xTEcKLPrgQRgfkVAkNZz-8/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwrvfe7c-NM9qeruJk2FYENHtsReAVRbQA53cIo54zSQEh2uuvemmyRPs4KmW3awaSKDQ/exec";
 
 let S = {
   horasAnuales: 1800,
@@ -1815,6 +1823,26 @@ function renderAnalytics(data){
     if(!Object.keys(data.series).length){
       content.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text3)">Sin datos para este trabajo en los últimos 12 meses.</div>';
     }
+  }
+}
+
+// ── GUARDAR TRABAJADORES EN SHEETS ────────────────────────────
+async function saveWorkersToSheets(){
+  const btn   = document.getElementById('saveWorkersBtn');
+  const alert = document.getElementById('saveWorkersAlert');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i> Guardando...';
+  try{
+    await sendViaIframe({ action: 'saveWorkers', workers: S.workers });
+    alert.className = 'alert on alert-ok';
+    alert.innerHTML = '<i class="ti ti-check"></i> Trabajadores guardados correctamente en Google Sheets.';
+    setTimeout(()=>{ alert.className='alert'; }, 4000);
+  } catch(e){
+    alert.className = 'alert on alert-err';
+    alert.innerHTML = '<i class="ti ti-alert-circle"></i> Error al guardar: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-device-floppy"></i> Guardar en Sheets';
   }
 }
 
