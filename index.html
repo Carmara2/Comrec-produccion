@@ -1503,17 +1503,16 @@ function fmtHora(v){
   return s;
 }
 
-function fmtNum(v, dec){
-  if(v===''||v===null||v===undefined) return '';
+// Convierte valor a numero JS o null. Acepta "7.4", "7,4", 7.4
+function toNum(v){
+  if(v===''||v===null||v===undefined) return null;
+  if(typeof v === 'number') return v;
   const s = String(v).trim();
-  if(s==='') return '';
-  // Reject date-like strings
-  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return '';
-  if(/^\d{2}\/\d{2}\/\d{4}/.test(s)) return '';
-  const n = parseFloat(s);
-  if(isNaN(n)) return '';
-  // Usar coma como separador decimal (formato europeo)
-  return n.toFixed(dec).replace('.', ',');
+  if(s==='') return null;
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return null; // fecha ISO -> no es numero
+  if(/^\d{2}\/\d{2}\/\d{4}/.test(s)) return null; // fecha dd/mm -> no es numero
+  const n = parseFloat(s.replace(',','.'));
+  return isNaN(n) ? null : n;
 }
 
 function formatPartesRow(row, isHeader){
@@ -1521,21 +1520,25 @@ function formatPartesRow(row, isHeader){
   // Cols: 0=Timestamp 1=Fecha 2=Turno 3=Encargado 4=Trabajador
   //       5=HoraInicio 6=HoraFin 7=Duracion 8=Trabajo 9=Detalle
   //       10=NumBalas 11=ToneladasProd 12=CostePorTon 13=Observaciones
+  const dur  = toNum(row[7]);
+  const bal  = toNum(row[10]);
+  const tons = toNum(row[11]);
+  const cost = toNum(row[12]);
   return [
-    fmtTimestamp(row[0]),   // Timestamp
-    fmtFecha(row[1]),       // Fecha
-    row[2],                  // Turno
-    row[3],                  // Encargado
-    row[4],                  // Trabajador
-    fmtHora(row[5]),        // Hora Inicio
-    fmtHora(row[6]),        // Hora Fin
-    row[7],                  // Duracion (min)
-    row[8],                  // Trabajo
-    row[9],                  // Detalle
-    row[10],                 // Num Balas
-    fmtNum(row[11],1),      // Toneladas producidas
-    fmtNum(row[12],2),      // Coste por tonelada
-    row[13]                  // Observaciones
+    fmtTimestamp(row[0]),          // Timestamp  texto
+    fmtFecha(row[1]),              // Fecha      texto
+    row[2],                         // Turno      texto
+    row[3],                         // Encargado  texto
+    row[4],                         // Trabajador texto
+    fmtHora(row[5]),               // Hora Inicio texto
+    fmtHora(row[6]),               // Hora Fin    texto
+    dur  !== null ? dur  : '',     // Duracion    NUMERO entero
+    row[8],                         // Trabajo     texto
+    row[9],                         // Detalle     texto
+    bal  !== null ? bal  : '',     // Num Balas   NUMERO entero
+    tons !== null ? tons : '',     // Toneladas   NUMERO 2 dec
+    cost !== null ? cost : '',     // Coste/Ton   NUMERO 2 dec
+    row[13]                         // Observaciones texto
   ];
 }
 
@@ -1543,19 +1546,30 @@ function formatProdRow(row, isHeader){
   if(isHeader) return row;
   // Cols: 0=Timestamp 1=Fecha 2=Turno 3=Encargado 4=Trabajo 5=Material
   //       6=NumBalas 7=ToneladasProd 8=NumOperarios 9=Operarios 10=CosteProduccion 11=Obs
+  const bal  = toNum(row[6]);
+  const tons = toNum(row[7]);
+  const ops  = toNum(row[8]);
+  const cost = toNum(row[10]);
   return [
-    fmtTimestamp(row[0]),
-    fmtFecha(row[1]),
-    row[2], row[3], row[4], row[5],
-    row[6],
-    fmtNum(row[7],1),
-    row[8], row[9],
-    fmtNum(row[10],2),
-    row[11]
+    fmtTimestamp(row[0]),          // Timestamp   texto
+    fmtFecha(row[1]),              // Fecha       texto
+    row[2], row[3], row[4], row[5],// Turno/Enc/Trabajo/Material texto
+    bal  !== null ? bal  : '',     // Num Balas   NUMERO entero
+    tons !== null ? tons : '',     // Toneladas   NUMERO 2 dec
+    ops  !== null ? ops  : '',     // Num Operarios NUMERO entero
+    row[9],                         // Operarios   texto
+    cost !== null ? cost : '',     // Coste Prod  NUMERO 2 dec
+    row[11]                         // Observaciones texto
   ];
 }
 
-function applySheetStyles(ws, headerColor, colWidths, dataLength){
+// Formatos de numero Excel por columna (formato europeo con coma decimal)
+// Partes: col 7=Duracion, 10=NumBalas, 11=Tons, 12=CosteTon
+const PARTES_NUM_FMTS = {7:'#,##0', 10:'#,##0', 11:'#,##0.00', 12:'#,##0.00'};
+// Producciones: col 6=NumBalas, 7=Tons, 8=NumOps, 10=Coste
+const PROD_NUM_FMTS   = {6:'#,##0', 7:'#,##0.00', 8:'#,##0', 10:'#,##0.00'};
+
+function applySheetStyles(ws, headerColor, colWidths, dataLength, numFmts){
   ws['!cols'] = colWidths.map(w=>({wch:w}));
   const range = XLSX.utils.decode_range(ws['!ref']);
   // Cabecera
@@ -1570,24 +1584,27 @@ function applySheetStyles(ws, headerColor, colWidths, dataLength){
       };
     }
   }
-  // Filas alternas — forzar tipo texto en celdas con coma decimal
+  // Filas de datos
   for(let r=1; r<=dataLength; r++){
     const bg = r%2===0 ? 'EEF4FF' : 'FFFFFF';
     for(let c=range.s.c; c<=range.e.c; c++){
       const cellRef = XLSX.utils.encode_cell({r,c});
       const cell = ws[cellRef];
-      if(cell){
-        // Si el valor contiene coma decimal, forzar tipo string
-        if(typeof cell.v === 'string' && /^\d+,\d+$/.test(cell.v)){
-          cell.t = 's'; // string type
-        }
-        cell.s = {
-          fill:{patternType:'solid', fgColor:{rgb:bg}},
-          font:{sz:9},
-          alignment:{vertical:'center', horizontal: cell.t==='s'&&/^\d/.test(String(cell.v)) ? 'right' : 'left'},
-          border:{bottom:{style:'thin',color:{rgb:'DDDDDD'}}}
-        };
+      if(!cell) continue;
+      // Si es numero, asegurar tipo 'n' y aplicar formato numerico europeo
+      if(typeof cell.v === 'number'){
+        cell.t = 'n';
+        if(numFmts && numFmts[c]) cell.z = numFmts[c];
       }
+      cell.s = {
+        fill:{patternType:'solid', fgColor:{rgb:bg}},
+        font:{sz:9},
+        alignment:{
+          vertical:'center',
+          horizontal: typeof cell.v === 'number' ? 'right' : 'left'
+        },
+        border:{bottom:{style:'thin',color:{rgb:'DDDDDD'}}}
+      };
     }
   }
 }
@@ -1607,7 +1624,7 @@ function downloadExport(){
     const ws = XLSX.utils.aoa_to_sheet(formatted);
     applySheetStyles(ws, '185FA5',
       [20,11,8,16,16,9,9,8,14,18,9,13,13,22],
-      expData.partes.length-1);
+      expData.partes.length-1, PARTES_NUM_FMTS);
     XLSX.utils.book_append_sheet(wb, ws, 'Partes');
   }
 
@@ -1616,7 +1633,7 @@ function downloadExport(){
     const ws2 = XLSX.utils.aoa_to_sheet(formatted2);
     applySheetStyles(ws2, '1A5276',
       [20,11,8,16,14,16,9,12,11,36,13,22],
-      expData.producciones.length-1);
+      expData.producciones.length-1, PROD_NUM_FMTS);
     XLSX.utils.book_append_sheet(wb, ws2, 'Producciones');
   }
 
